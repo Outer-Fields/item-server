@@ -3,21 +3,19 @@ package io.mindspice.itemserver.api;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
-import io.mindspice.databaseservice.client.api.OkraGameAPI;
-import io.mindspice.itemserver.Schema.ApiMint;
-import io.mindspice.itemserver.Schema.Card;
+import io.mindspice.databaseservice.client.schema.Card;
+import io.mindspice.itemserver.schema.ApiMint;
 import io.mindspice.itemserver.Settings;
-import io.mindspice.itemserver.monitor.BlockchainMonitor;
+import io.mindspice.itemserver.services.AvatarService;
+import io.mindspice.itemserver.services.DIDUpdateService;
 import io.mindspice.jxch.transact.jobs.mint.MintItem;
 import io.mindspice.jxch.transact.jobs.mint.MintService;
+import io.mindspice.mindlib.data.tuples.Pair;
 import io.mindspice.mindlib.util.JsonUtils;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
 import java.util.List;
@@ -27,17 +25,25 @@ import java.util.UUID;
 
 @CrossOrigin
 @RestController
-public class Endpoints {
+@RequestMapping("/mint")
+public class Mint {
     private final MintService mintService;
+    private final AvatarService avatarService;
+    private final DIDUpdateService didUpdateService;
+
     private final List<Card> cardList;
     public static final TypeReference<List<ApiMint>> API_MINT_LIST = new TypeReference<>() { };
 
-    public Endpoints(
+    public Mint(
             @Qualifier("mintService") MintService mintService,
-            @Qualifier("cardList") List<Card> cardList) {
+            @Qualifier("avatarService") AvatarService avatarService,
+            @Qualifier("didUpdateService") DIDUpdateService didUpdateService,
+            @Qualifier("cardList") List<Card> cardList
+    ) {
         this.mintService = mintService;
+        this.avatarService = avatarService;
+        this.didUpdateService = didUpdateService;
         this.cardList = cardList;
-
     }
 
     @PostMapping("/mint_account_nft")
@@ -60,15 +66,14 @@ public class Endpoints {
         List<ApiMint> mints = JsonUtils.readJson(node.traverse(), API_MINT_LIST);
         List<MintItem> mintItems;
         try {
-            mintItems = mints.stream()
-                    .map(m -> new MintItem(
-                                 m.address(),
-                                 cardList.stream()
-                                         .filter(c -> c.uid().equals(m.cardUID()))
-                                         .findFirst().orElseThrow().metaData(),
-                                 m.jobUUID()
-                         )
-                    ).toList();
+            mintItems = mints.stream().map(
+                    m -> new MintItem(
+                            m.address(),
+                            cardList.stream()
+                                    .filter(c -> c.uid().equals(m.cardUID()))
+                                    .findFirst().orElseThrow().metaData(),
+                            m.jobUUID())
+            ).toList();
         } catch (NoSuchElementException e) {
             return new ResponseEntity<>(JsonUtils.writeString(JsonUtils.errorMsg(e.getMessage())), HttpStatus.OK);
         }
@@ -78,5 +83,28 @@ public class Endpoints {
         );
     }
 
+    @PostMapping("update_avatar")
+    public ResponseEntity<String> updateAvatar(@RequestBody String jsonRequest) throws IOException {
+        JsonNode node = JsonUtils.readTree(jsonRequest);
+        String nftId = node.get("nft_id").asText();
+        int playerId = node.get("player_id").asInt();
+        if (nftId == null) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        avatarService.submit(new Pair<>(nftId, playerId));
+        return new ResponseEntity<>(HttpStatus.OK);
+    }
+
+    @PostMapping("update_did")
+    public ResponseEntity<String> update_did(@RequestBody String jsonRequest) throws IOException {
+        JsonNode node = JsonUtils.readTree(jsonRequest);
+        String offer = node.get("offer").asText();
+        int playerId = node.get("player_id").asInt();
+        if (offer == null) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        didUpdateService.submit(new Pair<>(offer, playerId));
+        return new ResponseEntity<>(HttpStatus.OK);
+    }
 
 }

@@ -1,13 +1,16 @@
 package io.mindspice.itemserver.services;
 
-import io.mindspice.itemserver.Schema.Card;
-import io.mindspice.itemserver.Schema.CardDomain;
-import io.mindspice.itemserver.Schema.CardType;
+import io.mindspice.databaseservice.client.schema.Card;
+import io.mindspice.databaseservice.client.schema.CardDomain;
+import io.mindspice.databaseservice.client.schema.CardType;
+
 import io.mindspice.itemserver.Settings;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 
@@ -15,7 +18,7 @@ public class CardSelect {
 
     public static List<Card> getCards(List<Card> cards, int amount, CardDomain domain, CardType type) {
         List<Card> selectedCards = selectCards(cards, amount, domain, type);
-        while (selectedCards.size() != amount) {
+        while (selectedCards.size() < amount) {
             selectedCards.addAll(selectCards(cards, amount - selectedCards.size(), domain, type));
         }
         return selectedCards;
@@ -34,7 +37,7 @@ public class CardSelect {
                                 .filter(c -> (ThreadLocalRandom.current().nextInt(0, 100) <= Settings.get().goldPct) == c.isGold())
                                 .filter(c -> (ThreadLocalRandom.current().nextInt(0, 100) <= Settings.get().holoPct) == c.isHolo())
                                 .toList()
-                )).filter(Objects::nonNull).toList();
+                )).filter(Objects::nonNull).collect(Collectors.toCollection(ArrayList::new));
     }
 
     public interface RandomSelector<T> {

@@ -4,7 +4,8 @@ import io.mindspice.databaseservice.client.DBServiceClient;
 import io.mindspice.databaseservice.client.api.OkraChiaAPI;
 import io.mindspice.databaseservice.client.api.OkraGameAPI;
 import io.mindspice.databaseservice.client.api.OkraNFTAPI;
-import jakarta.annotation.PostConstruct;
+import io.mindspice.itemserver.Settings;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -15,26 +16,30 @@ import java.security.NoSuchAlgorithmException;
 
 @Configuration
 public class DbClientConfig {
-    // Database Service Client
-    private DBServiceClient dbServiceClient;
 
-    @PostConstruct
-    public void init() throws NoSuchAlgorithmException, KeyStoreException, KeyManagementException {
-        dbServiceClient = new DBServiceClient("127.0.0.1", "user", "password"); // TODO make this load from file
+    @Bean
+    public DBServiceClient okraDBClient() throws NoSuchAlgorithmException, KeyStoreException, KeyManagementException {
+        return new DBServiceClient(Settings.get().okraDBUri, Settings.get().okraDBUser, Settings.get().okraDBPass);
     }
 
     @Bean
-    OkraChiaAPI okraChiaApi() {
-        return new OkraChiaAPI(dbServiceClient);
+    public DBServiceClient chiaDBClient() throws NoSuchAlgorithmException, KeyStoreException, KeyManagementException {
+        return new DBServiceClient(Settings.get().chiaDBUri, Settings.get().chiaDBUser, Settings.get().chiaDBPass);
     }
 
     @Bean
-    OkraNFTAPI okraNFTApi() {
-        return new OkraNFTAPI(dbServiceClient);
+    OkraChiaAPI okraChiaApi(@Qualifier("chiaDBClient") DBServiceClient chiaDBClient) {
+        return new OkraChiaAPI(chiaDBClient);
     }
 
     @Bean
-    OkraGameAPI okraGameApi() {
-        return new OkraGameAPI(dbServiceClient);
+    OkraNFTAPI okraNFTApi(@Qualifier("okraDBClient") DBServiceClient okraDBClient) {
+        return new OkraNFTAPI(okraDBClient);
     }
+
+    @Bean
+    OkraGameAPI okraGameApi(@Qualifier("okraDBClient") DBServiceClient okraDBClient) {
+        return new OkraGameAPI(okraDBClient);
+    }
+
 }

@@ -36,15 +36,15 @@
         </rollingPolicy>
     </appender>
 
-    <logger name="MINT" level="INFO" additivity="false">
+    <logger name="MINT" level="DEBUG" additivity="false">
         <appender-ref ref="MINT"/>
     </logger>
 
-    <logger name="TRANSACT" level="INFO" additivity="false">
+    <logger name="TRANSACT" level="DEBUG" additivity="false">
         <appender-ref ref="TRANSACT"/>
     </logger>
 
-    <logger name="APP" level="INFO" additivity="false">
+    <logger name="APP" level="DEBUG" additivity="false">
         <appender-ref ref="APP"/>
     </logger>
 
