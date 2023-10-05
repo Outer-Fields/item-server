@@ -17,6 +17,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Instant;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
@@ -26,13 +27,13 @@ import java.util.stream.IntStream;
 
 //TODO make logging make logging follow existing practices for formatting
 
-public class AvatarService implements Runnable{
-    private final LinkedBlockingQueue<Pair<String, Integer>> conversionQueue = new LinkedBlockingQueue<>(10);
+
+public class AvatarService {
     private final WalletAPI walletAPI;
     private final OkraGameAPI gameApi;
     private final CustomLogger logger;
     private final S3Service s3Service;
-    UnsafeHttpClient client = new UnsafeHttpClient(5_000, 5_000, 5_000);
+    UnsafeHttpClient client = new UnsafeHttpClient(10_000, 10_000, 10_000);
     String uuid = UUID.randomUUID().toString();
 
     public AvatarService(WalletAPI monWalletApi, OkraGameAPI gameApi, S3Service s3Service, CustomLogger logger) {
@@ -42,31 +43,45 @@ public class AvatarService implements Runnable{
         this.logger = logger;
     }
 
-    public void submit(Pair<String, Integer> nftLauncher) {
-        conversionQueue.add(nftLauncher);
+    public void submit(Pair<Integer, String> updateInfo) {
+        Thread.ofVirtual().start(updateTask(updateInfo.first(), updateInfo.second()));
+
     }
 
-    public void run() {
+    public Runnable updateTask(int playerId, String nftLauncher) {
 
-        List<Pair<String, Integer>> conversions = IntStream.range(0, Math.min(20, conversionQueue.size()))
-                .mapToObj ((i) -> conversionQueue.poll()).filter(Objects::nonNull).toList();
+        return new Runnable() {
+            @Override
+            public void run() {
+                try {
 
-        logger.logApp(this.getClass(), TLogLevel.INFO, "Starting ConversionJob: " + uuid
-                + " for: " +  conversions);
+                    long lastUpdate = gameApi.getLastAvatarUpdate(playerId).data().orElseThrow();
+                    if (Instant.now().getEpochSecond() - lastUpdate < 86400) {
+                        logger.logApp(this.getClass(), TLogLevel.INFO, "Player Id: " + playerId +
+                                " | Ignored avatar update: Too soon");
+                        return;
+                    }
 
-        for (var nftLauncher : conversions) {
-            try {
-                NftInfo nftInfo = walletAPI.nftGetInfo(nftLauncher.first()).data().orElseThrow();
-                List<String> uris = nftInfo.dataUris();
-                byte[] imgBytes = getConvertedImage(uris);
-                if (imgBytes == null || imgBytes.length > 1024 * 66) { continue; }
-                s3Service.uploadBytes(nftLauncher.second() + ".png", imgBytes);
-                gameApi.updatePlayerAvatar(nftLauncher.second(), "");
-            } catch (Exception e) {
-                logger.logApp(this.getClass(), TLogLevel.ERROR, " ConversionJob: " + uuid  + " | Failed getting nftInfo for:"
-                        + nftLauncher + " | PlayerId: " + nftLauncher.second() + " | Message: " + e.getMessage());
+                    NftInfo nftInfo = walletAPI.nftGetInfo(nftLauncher).data().orElseThrow();
+                    List<String> uris = nftInfo.dataUris();
+                    byte[] imgBytes = getConvertedImage(uris);
+                    if (imgBytes == null || imgBytes.length > 1024 * 66) {
+                        logger.logApp(this.getClass(), TLogLevel.INFO, "Player Id: " + playerId +
+                                " | Ignored avatar update: Too large of file");
+                        return;
+                    }
+                    s3Service.uploadBytes(playerId + ".png", imgBytes);
+                    gameApi.updatePlayerAvatar(playerId, playerId + ".png");
+
+                    logger.logApp(this.getClass(), TLogLevel.INFO, "Player Id: " + playerId +
+                            " | Updated player avatar with: " + nftLauncher);
+                } catch (Exception e) {
+                    logger.logApp(this.getClass(), TLogLevel.ERROR, " | PlayerId: " + playerId +
+                            " | Failed updating avatar with: " + nftLauncher +
+                            " | Message: " + e.getMessage(), e);
+                }
             }
-        }
+        };
     }
 
     public byte[] getConvertedImage(List<String> uris) throws IOException {
@@ -88,13 +103,11 @@ public class AvatarService implements Runnable{
         ByteArrayInputStream imageByteStream = new ByteArrayInputStream(imgBytes);
         if (!checkSafeImage(new ByteArrayInputStream(imgBytes))) {
             logger.logApp(this.getClass(), TLogLevel.ERROR, "Abuse attempted in ConversionJob: "
-                    + uuid  + " with:  " + uris);
+                    + uuid + " with:  " + uris);
             throw new IllegalStateException("Validation Fail");
         }
 
-
         BufferedImage ogImage = ImageIO.read(imageByteStream);
-
 
         BufferedImage resizedImage = new BufferedImage(128, 128, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = resizedImage.createGraphics();

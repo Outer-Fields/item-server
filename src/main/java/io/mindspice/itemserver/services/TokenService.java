@@ -1,5 +1,6 @@
 package io.mindspice.itemserver.services;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import io.mindspice.jxch.rpc.http.FullNodeAPI;
 import io.mindspice.jxch.rpc.http.WalletAPI;
 import io.mindspice.jxch.rpc.schemas.wallet.Addition;
@@ -9,6 +10,7 @@ import io.mindspice.jxch.transact.jobs.transaction.TransactionService;
 import io.mindspice.jxch.transact.logging.TLogLevel;
 import io.mindspice.jxch.transact.logging.TLogger;
 import io.mindspice.jxch.transact.settings.JobConfig;
+import io.mindspice.mindlib.util.JsonUtils;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -29,6 +31,12 @@ public class TokenService extends TransactionService {
     protected void onFail(List<TransactionItem> list) {
         tLogger.log(this.getClass(), TLogLevel.FAILED, "Failed Transaction for UUIDs: " +
                 list.stream().map(TransactionItem::uuid).toList());
+        try {
+            tLogger.log(this.getClass(), TLogLevel.FAILED, "Failed transactions json: " + JsonUtils.writeString(list));
+        } catch (JsonProcessingException e) {
+            tLogger.log(this.getClass(), TLogLevel.ERROR,
+                    "Failed Writing Failed Transactions, Reverting To Java Deserialization: " + list, e);
+        }
         failedTransactions.addAll(list);
     }
 
@@ -39,6 +47,7 @@ public class TokenService extends TransactionService {
 
     public void reSubmitFailedTransactions() {
         submit(failedTransactions);
+        failedTransactions.clear();
     }
 
     public int failedTransactionCount() {

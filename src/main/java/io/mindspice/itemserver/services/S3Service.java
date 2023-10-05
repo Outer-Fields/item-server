@@ -12,20 +12,16 @@ public class S3Service {
     @Autowired
     private AmazonS3 s3Client;
 
-    private static final String BUCKET_NAME = "ofa-content";
+    private static final String BUCKET_NAME = "avatar.okra.netwrok";
 
     public void uploadBytes( String key, byte[] bytes) {
-        // Wrap the byte array in a ByteArrayInputStream
         ByteArrayInputStream inputStream = new ByteArrayInputStream(bytes);
-
-        // Set content length, so S3 knows how much data to expect
         ObjectMetadata metadata = new ObjectMetadata();
-        metadata.setContentLength(bytes.length);
+        metadata.setContentLength(bytes.length); // Set content length, so S3 knows how much data to expect
         metadata.setContentType("image/png");
-        // Create a PutObjectRequest using the ByteArrayInputStream
+        metadata.setContentDisposition("inline");
+        metadata.setCacheControl("max-age=14400"); // cloudflare cache for 2 hours
         PutObjectRequest putRequest = new PutObjectRequest(BUCKET_NAME, key, inputStream, metadata);
-
-        // Upload the data
         s3Client.putObject(putRequest);
     }
 }

@@ -7,7 +7,6 @@ import io.mindspice.databaseservice.client.schema.Card;
 import io.mindspice.itemserver.schema.ApiMint;
 import io.mindspice.itemserver.Settings;
 import io.mindspice.itemserver.services.AvatarService;
-import io.mindspice.itemserver.services.DIDUpdateService;
 import io.mindspice.jxch.transact.jobs.mint.MintItem;
 import io.mindspice.jxch.transact.jobs.mint.MintService;
 import io.mindspice.mindlib.data.tuples.Pair;
@@ -25,24 +24,21 @@ import java.util.UUID;
 
 @CrossOrigin
 @RestController
-@RequestMapping("/mint")
-public class Mint {
+@RequestMapping("/internal")
+public class Internal {
     private final MintService mintService;
     private final AvatarService avatarService;
-    private final DIDUpdateService didUpdateService;
 
     private final List<Card> cardList;
     public static final TypeReference<List<ApiMint>> API_MINT_LIST = new TypeReference<>() { };
 
-    public Mint(
+    public Internal(
             @Qualifier("mintService") MintService mintService,
             @Qualifier("avatarService") AvatarService avatarService,
-            @Qualifier("didUpdateService") DIDUpdateService didUpdateService,
             @Qualifier("cardList") List<Card> cardList
     ) {
         this.mintService = mintService;
         this.avatarService = avatarService;
-        this.didUpdateService = didUpdateService;
         this.cardList = cardList;
     }
 
@@ -91,20 +87,21 @@ public class Mint {
         if (nftId == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
-        avatarService.submit(new Pair<>(nftId, playerId));
+        avatarService.submit(new Pair<>(playerId, nftId));
         return new ResponseEntity<>(HttpStatus.OK);
     }
 
-    @PostMapping("update_did")
-    public ResponseEntity<String> update_did(@RequestBody String jsonRequest) throws IOException {
-        JsonNode node = JsonUtils.readTree(jsonRequest);
-        String offer = node.get("offer").asText();
-        int playerId = node.get("player_id").asInt();
-        if (offer == null) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-        }
-        didUpdateService.submit(new Pair<>(offer, playerId));
-        return new ResponseEntity<>(HttpStatus.OK);
-    }
+//    @PostMapping("update_did")
+//    public ResponseEntity<String> update_did(@RequestBody String jsonRequest) throws IOException {
+//        JsonNode node = JsonUtils.readTree(jsonRequest);
+//        String uuid = node.get("uuid").asText();
+//        String offer = node.get("offer").asText();
+//
+//        if (offer == null) {
+//            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+//        }
+//        avatarUpdateService.submit(new Pair<>(uuid, offer));
+//        return new ResponseEntity<>(HttpStatus.OK);
+//    }
 
 }

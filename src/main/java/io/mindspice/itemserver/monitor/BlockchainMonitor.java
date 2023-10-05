@@ -4,6 +4,7 @@ import io.mindspice.databaseservice.client.api.OkraChiaAPI;
 import io.mindspice.databaseservice.client.api.OkraNFTAPI;
 import io.mindspice.databaseservice.client.schema.AccountDid;
 import io.mindspice.databaseservice.client.schema.Card;
+import io.mindspice.databaseservice.client.schema.CardAndAccountCheck;
 import io.mindspice.databaseservice.client.schema.NftUpdate;
 import io.mindspice.itemserver.schema.PackPurchase;
 import io.mindspice.itemserver.schema.PackType;
@@ -14,7 +15,6 @@ import io.mindspice.jxch.rpc.http.WalletAPI;
 import io.mindspice.jxch.rpc.schemas.ApiResponse;
 import io.mindspice.jxch.rpc.schemas.custom.CatSenderInfo;
 import io.mindspice.jxch.rpc.schemas.object.CoinRecord;
-import io.mindspice.jxch.rpc.schemas.wallet.Addition;
 import io.mindspice.jxch.rpc.schemas.wallet.nft.NftInfo;
 import io.mindspice.jxch.rpc.util.RPCException;
 import io.mindspice.jxch.transact.jobs.mint.MintService;
@@ -23,10 +23,7 @@ import io.mindspice.jxch.transact.logging.TLogger;
 import io.mindspice.mindlib.data.tuples.Pair;
 
 import java.util.*;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
+import java.util.concurrent.*;
 import java.util.function.Supplier;
 
 
@@ -40,20 +37,21 @@ public class BlockchainMonitor implements Runnable {
     private final Map<String, Pair<String, PackType>> assetMap;
     private final List<Card> cardList;
     private final TLogger logger;
+    private final Semaphore semaphore = new Semaphore(1);
     // Add autowired reference here to use in this class, but have the rest manual managed
 
     protected final Supplier<RPCException> chiaExcept =
             () -> new RPCException("Required Chia RPC call returned Optional.empty");
 
-    private final ExecutorService exec;
     private final ExecutorService virtualExec = Executors.newVirtualThreadPerTaskExecutor();
 
     public BlockchainMonitor(
             FullNodeAPI nodeAPI, WalletAPI walletAPI,
             OkraChiaAPI chiaAPI, OkraNFTAPI nftAPI,
-            MintService mintService, Map<String, Pair<String, PackType>> assetMap,
+            MintService mintService, Map<String,
+            Pair<String, PackType>> assetMap,
             List<Card> cardList, int startHeight,
-            ExecutorService executorService, TLogger logger) {
+            TLogger logger) {
 
         nextHeight = startHeight;
         this.nodeAPI = nodeAPI;
@@ -63,7 +61,6 @@ public class BlockchainMonitor implements Runnable {
         this.mintService = mintService;
         this.assetMap = assetMap;
         this.cardList = cardList;
-        this.exec = executorService;
         this.logger = logger;
         logger.log(this.getClass(), TLogLevel.INFO, "Started Blockchain Monitor");
     }
@@ -71,7 +68,9 @@ public class BlockchainMonitor implements Runnable {
     @Override
     public void run() {
         if (Settings.get().isPaused) { return; }
+        if (semaphore.availablePermits() == 0) { return; }
         try {
+            semaphore.acquire();
             if (!((nodeAPI.getHeight().data().orElseThrow() - Settings.get().heightBuffer) >= nextHeight)) {
                 return;
             }
@@ -83,112 +82,105 @@ public class BlockchainMonitor implements Runnable {
 
             if (additions.isEmpty()) {
                 logger.log(this.getClass(), TLogLevel.INFO, "Finished scan of block height: " + nextHeight +
-                        " | Block scan took: " + ((System.currentTimeMillis() - start)) / 1000 + " Seconds");
+                        " | Additions: 0" +
+                        " | Block scan took: " + (System.currentTimeMillis() - start) + " ms");
                 nextHeight++; // Non-atomic inc doesn't matter, non-critical, is volatile to observe when monitoring
                 return;
             }
 
+            CompletableFuture<CardAndAccountCheck> cardAndAccountCheck = CompletableFuture.supplyAsync(() -> {
+                var cardOrAccountUpdates = nftAPI.checkIfCardOrAccountExists(
+                        additions.stream().map(a -> a.coin().parentCoinInfo()).toList()
+                );
 
-            System.out.println("Additions size:" + additions.size());
-
-            List<String> cardUpdateLaunchers = Collections.synchronizedList(new ArrayList<>());
-            List<AccountDid> accountUpdateLaunchers = Collections.synchronizedList(new ArrayList<>());
-            List<PackPurchase> packPurchases = Collections.synchronizedList(new ArrayList<>());
-            CountDownLatch latch = new CountDownLatch(additions.size() * 2);
-            Semaphore semaphore = new Semaphore(120);
-
-            for (var record : additions) {
-
-                virtualExec.submit(() -> {
-                    try {
-                        semaphore.acquire();
-                        var cardCheck = nftAPI.checkIfCardExists(record.coin().parentCoinInfo());
-                        if (cardCheck.success()) {
-                            cardUpdateLaunchers.add(cardCheck.data().get()); // Safe to get since cardCheck returned success
-                        }
-                    } catch (Exception e) {
-                        logger.log(this.getClass(), TLogLevel.FAILED, "Exception on card check thread at height: " + nextHeight +
-                                " | Reason: " + e.getMessage(), e);
-                    } finally {
-                        latch.countDown();
-                        semaphore.release();
-                    }
-                });
-
-                virtualExec.submit(() -> {
-                    try {
-                        semaphore.acquire();
-                        var accountCheck = nftAPI.checkIfAccountNftExists(record.coin().parentCoinInfo());
-                        if (accountCheck.success()) {
-                            accountUpdateLaunchers.add(accountCheck.data().get());// Safe to get since accountCheck returned success
-                        }
-                    } catch (Exception e) {
-                        logger.log(this.getClass(), TLogLevel.FAILED, "Exception on account check thread at height: " + nextHeight +
-                                " | Reason: " + e.getMessage(), e);
-                    } finally {
-                        latch.countDown();
-                        semaphore.release();
-                    }
-                });
-
-                if (assetMap.containsKey(record.coin().puzzleHash())) {
-                    int amount = (int) (record.coin().amount() / 1000);
-                    ApiResponse<CatSenderInfo> catInfoResp = nodeAPI.getCatSenderInfo(record);
-                    if (!catInfoResp.success()) {
-                        logger.log(this.getClass(), TLogLevel.ERROR, " Failed asset lookup, wrong asset?" +
-                                " | Error: " + catInfoResp.error());
-                    }
-                    CatSenderInfo catInfo = catInfoResp.data().orElseThrow(chiaExcept);
-                    if (!catInfo.assetId().equals(assetMap.get(record.coin().puzzleHash()).first())) {
-                        logger.log(this.getClass(), TLogLevel.INFO, "Wrong Asset Received: " + catInfo.assetId()
-                                + " Expected: " + assetMap.get(record.coin().puzzleHash()).first()
-                                + " Amount: " + record.coin().amount());
-                        continue; // Can continue and break out since wrong asset was sent
-                    }
-
-                    PackType packType = assetMap.get(record.coin().puzzleHash()).second();
-                    for (int i = 0; i < amount; ++i) {
-                        String uuid = UUID.randomUUID().toString();
-                        logger.log(this.getClass(), TLogLevel.INFO, "Submitted pack purchase " +
-                                " | UUID: " + uuid +
-                                " | Parent Coin: " + record.coin().parentCoinInfo() +
-                                " | Amount(mojos / 1000): " + amount +
-                                " | Asset: " + catInfo.assetId() +
-                                " | Sender Address" + catInfo.senderPuzzleHash()
-                        );
-                        packPurchases.add(new PackPurchase(catInfo.senderPuzzleHash(), packType, uuid));
-                    }
+                if (cardOrAccountUpdates.data().isPresent()) {
+                    return cardOrAccountUpdates.data().get();
                 }
+                return null;
+            }, Executors.newVirtualThreadPerTaskExecutor());
 
-            }
-            latch.await();
+            CompletableFuture<List<PackPurchase>> packCheck = CompletableFuture.supplyAsync(() -> {
+                List<PackPurchase> packPurchases = null;
+                var packRecords = additions.stream().filter(a -> assetMap.containsKey(a.coin().puzzleHash())).toList();
+                if (!packRecords.isEmpty()) {
+                    packPurchases = new ArrayList<>(packRecords.size());
+                    for (var record : packRecords) {
+                        int amount = (int) (record.coin().amount() / 1000);
+                        try {
+                            ApiResponse<CatSenderInfo> catInfoResp = nodeAPI.getCatSenderInfo(record);
+                            if (!catInfoResp.success()) {
+                                logger.log(this.getClass(), TLogLevel.ERROR, " Failed asset lookup, wrong asset?" +
+                                        " | Error: " + catInfoResp.error());
+                                continue;
+                            }
+
+                            CatSenderInfo catInfo = catInfoResp.data().orElseThrow(chiaExcept);
+                            if (!catInfo.assetId().equals(assetMap.get(record.coin().puzzleHash()).first())) {
+                                logger.log(this.getClass(), TLogLevel.INFO, "Wrong Asset Received: " + catInfo.assetId()
+                                        + " Expected: " + assetMap.get(record.coin().puzzleHash()).first()
+                                        + " Amount: " + record.coin().amount());
+                                continue;
+                            }
+
+                            PackType packType = assetMap.get(record.coin().puzzleHash()).second();
+                            for (int i = 0; i < amount; ++i) {
+                                String uuid = UUID.randomUUID().toString();
+                                logger.log(this.getClass(), TLogLevel.INFO, "Submitted pack purchase " +
+                                        " | UUID: " + uuid +
+                                        " | Parent Coin: " + record.coin().parentCoinInfo() +
+                                        " | Amount(mojos / 1000): " + amount +
+                                        " | Asset: " + catInfo.assetId() +
+                                        " | Sender Address" + catInfo.senderPuzzleHash()
+                                );
+                                packPurchases.add(new PackPurchase(catInfo.senderPuzzleHash(), packType, uuid));
+                            }
+                        } catch (RPCException e) {
+                            logger.log(this.getClass(), TLogLevel.FAILED, "Failed asset lookups at height: " + nextHeight +
+                                    " | Reason: " + e.getMessage(), e);
+                        }
+                    }
+                    return packPurchases;
+                }
+                return null;
+            }, Executors.newVirtualThreadPerTaskExecutor());
+
+            CardAndAccountCheck cardAndAccountResults = cardAndAccountCheck.get();
+            List<PackPurchase> packPurchasesResults = packCheck.get();
 
             boolean foundChange = false;
-            if (!cardUpdateLaunchers.isEmpty() || !accountUpdateLaunchers.isEmpty()) {
-                exec.submit(new UpdateDbInfo(cardUpdateLaunchers, accountUpdateLaunchers));
-                foundChange = true;
+            if (cardAndAccountResults != null) {
+                if (!cardAndAccountResults.existingCards().isEmpty() || !cardAndAccountResults.existingAccounts().isEmpty()) {
+                    virtualExec.submit(new UpdateDbInfo(
+                            cardAndAccountResults.existingCards(),
+                            cardAndAccountResults.existingAccounts()
+                    ));
+                    foundChange = true;
+                }
             }
-            if (!packPurchases.isEmpty()) {
-                exec.submit(new PackMint(cardList, packPurchases, mintService));
+            if (packPurchasesResults != null && !packPurchasesResults.isEmpty()) {
+                virtualExec.submit(new PackMint(cardList, packPurchasesResults, mintService, nftAPI, logger));
                 foundChange = true;
             }
             logger.log(this.getClass(), TLogLevel.INFO, "Finished scan of block height: " + nextHeight +
-                    " | Block scan took: " + ((System.currentTimeMillis() - start)) / 1000 + " Seconds");
+                    " | Additions: " + additions.size() +
+                    " | Block scan took: " + (System.currentTimeMillis() - start) + " ms");
 
-
-            if(foundChange) {
+            if (foundChange) {
                 logger.log(this.getClass(), TLogLevel.INFO, "Changes detected" +
                         " | Height: " + nextHeight +
-                        " | Card NFTs: " + cardUpdateLaunchers +
-                        " | Account NFTs: " + accountUpdateLaunchers +
-                        " | Pack Purchases " + packPurchases);
+                        " | Card NFTs: " + (cardAndAccountResults != null ? cardAndAccountResults.existingCards().toString() : "[]") +
+                        " | Account NFTs: " + (cardAndAccountResults != null ? cardAndAccountResults.existingAccounts().toString() : "[]") +
+                        " | Pack Purchases " + (packPurchasesResults != null ? packPurchasesResults : "[]"));
             }
+
             nextHeight++;
 
-        } catch (Exception e) {
+        } catch (
+                Exception e) {
             logger.log(this.getClass(), TLogLevel.FAILED, "Failed to scan height: " + nextHeight +
                     " | Reason: " + e.getMessage(), e);
-            // " | Stack Trace: " + Arrays.toString(e.getStackTrace()));
+        } finally {
+            semaphore.release();
         }
     }
 
@@ -229,14 +221,13 @@ public class BlockchainMonitor implements Runnable {
                             newInfo.ownerDid().equals(didInfo.did())
                     );
                     nftAPI.updateAccountDid(updatedInfo);
-                } // TODO add height here
+                }
                 logger.log(this.getClass(), TLogLevel.INFO, "Successfully updated NFTs: "
                         + List.of(cardUpdates, accountUpdates));
             } catch (Exception e) {
                 logger.log(this.getClass(), TLogLevel.FAILED, "Failed updating NFTs: " +
                         List.of(cardUpdates, accountUpdates) +
-                        " | Reason: " + e.getMessage() +
-                        " | Stack Trace: " + Arrays.toString(e.getStackTrace()));
+                        " | Reason: " + e.getMessage(), e);
             }
         }
     }

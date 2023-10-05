@@ -10,19 +10,16 @@ import io.mindspice.itemserver.monitor.BlockchainMonitor;
 import io.mindspice.itemserver.services.*;
 import io.mindspice.jxch.rpc.http.FullNodeAPI;
 import io.mindspice.jxch.rpc.http.WalletAPI;
-import io.mindspice.jxch.rpc.schemas.wallet.Addition;
-import io.mindspice.jxch.rpc.util.ChiaUtils;
 import io.mindspice.jxch.transact.jobs.mint.MintService;
-import io.mindspice.jxch.transact.jobs.transaction.TransactionItem;
 import io.mindspice.jxch.transact.logging.TLogger;
 import io.mindspice.jxch.transact.settings.JobConfig;
 import io.mindspice.mindlib.data.tuples.Pair;
+import io.mindspice.mindlib.http.UnsafeHttpJsonClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,7 +36,10 @@ public class ServiceConfig {
         return Executors.newScheduledThreadPool(10);
     }
 
-
+    @Bean
+    public UnsafeHttpJsonClient authResponseClient() {
+        return new UnsafeHttpJsonClient();
+    }
 
     @Bean
     public BlockchainMonitor blockchainMonitor(
@@ -55,9 +55,9 @@ public class ServiceConfig {
     ) {
         BlockchainMonitor monitor = new BlockchainMonitor(
                 monNodeApi, monWalletApi, okraChiaAPI, okraNFTAPI, mintService,
-                assetTable, cardList, Settings.get().startHeight, executor, logger);
+                assetTable, cardList, Settings.get().startHeight, logger);
 
-        executor.scheduleWithFixedDelay(monitor, 0, 5, TimeUnit.SECONDS);
+        executor.scheduleAtFixedRate(monitor, 0, 5, TimeUnit.SECONDS);
         return monitor;
     }
 
@@ -117,7 +117,6 @@ public class ServiceConfig {
         return new S3Service();
     }
 
-
     @Bean
     AvatarService avatarService(
             @Qualifier("monWalletApi") WalletAPI monWalletApi,
@@ -125,21 +124,9 @@ public class ServiceConfig {
             @Qualifier("s3Service") S3Service s3Service,
             @Qualifier("customLogger") CustomLogger customLogger
     ) {
-        AvatarService avatarService = new AvatarService(monWalletApi, okraGameAPI, s3Service(), customLogger);
-        executor().scheduleWithFixedDelay(avatarService, 60, 120, TimeUnit.SECONDS);
-        return avatarService;
+        return new AvatarService(monWalletApi, okraGameAPI, s3Service(), customLogger);
     }
 
-    @Bean
-    DIDUpdateService didUpdateService(
-            @Qualifier("monWalletApi") WalletAPI monWalletApi,
-            @Qualifier("okraGameApi") OkraGameAPI okraGameAPI,
-            @Qualifier("customLogger") CustomLogger customLogger
-    ) {
-        DIDUpdateService didUpdateService = new DIDUpdateService(monWalletApi, okraGameAPI, customLogger);
-        executor().scheduleWithFixedDelay(didUpdateService, 120, 120, TimeUnit.SECONDS);
-        return didUpdateService;
-    }
 
     @Bean
     //<CatAddress,<AssetId,PackType>

@@ -25,10 +25,17 @@ public class Settings {
     public String chiaDBUser;
     public String chiaDBPass;
 
+    /* Internal Services */
+    public String authServiceUri;
+    public int authServicePort;
+    public String authServiceUser;
+    public String authServicePass;
+
     /* Card Rarity */
     public int holoPct = 3;
     public int goldPct = 20;
     public int highLvl = 40;
+    public String currCollection;
 
     /* Config Paths */
     public String monNodeConfig;
