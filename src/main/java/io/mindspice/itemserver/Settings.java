@@ -7,6 +7,7 @@ import io.mindspice.jxch.rpc.schemas.wallet.nft.MetaData;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
 
 
 public class Settings {
@@ -38,14 +39,39 @@ public class Settings {
     public String currCollection;
 
     /* Config Paths */
-    public String monNodeConfig;
-    public String transactNodeConfig;
+    public String mainNodeConfig;
+    public String mintWalletConfig;
+    public String transactionWalletConfig;
     public String mintJobConfig;
-    public String tokenJobConfig;
+    public String okraJobConfig;
+    public String outrJobConfig;
 
     /* S3 */
     public String s3AccessKey;
     public String s3SecretKey;
+
+
+    /* Assets */
+    public String boosterAddress;
+    public String boosterTail;
+    public String starterAddress;
+    public String starterTail;
+
+
+    /* DID Mint */
+    public String didMintToAddr;
+    public List<String> didUris;
+    public List<String> didMetaUris;
+    public List<String> didLicenseUris;
+    public String didHash;
+    public String didMetaHash;
+    public String didLicenseHash;
+
+    /* Dispersal Limits */
+    public int nftFlagAmount;
+    public int okraFlagAmount;
+    public int outrFlagAmount;
+
 
 
     static {

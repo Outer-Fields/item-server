@@ -28,17 +28,17 @@ public class DbClientConfig {
     }
 
     @Bean
-    OkraChiaAPI okraChiaApi(@Qualifier("chiaDBClient") DBServiceClient chiaDBClient) {
+    OkraChiaAPI okraChiaAPI(@Qualifier("chiaDBClient") DBServiceClient chiaDBClient) {
         return new OkraChiaAPI(chiaDBClient);
     }
 
     @Bean
-    OkraNFTAPI okraNFTApi(@Qualifier("okraDBClient") DBServiceClient okraDBClient) {
+    OkraNFTAPI okraNFTAPI(@Qualifier("okraDBClient") DBServiceClient okraDBClient) {
         return new OkraNFTAPI(okraDBClient);
     }
 
     @Bean
-    OkraGameAPI okraGameApi(@Qualifier("okraDBClient") DBServiceClient okraDBClient) {
+    OkraGameAPI okraGameAPI(@Qualifier("okraDBClient") DBServiceClient okraDBClient) {
         return new OkraGameAPI(okraDBClient);
     }
 

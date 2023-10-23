@@ -10,7 +10,7 @@ import io.mindspice.itemserver.monitor.BlockchainMonitor;
 import io.mindspice.itemserver.services.*;
 import io.mindspice.jxch.rpc.http.FullNodeAPI;
 import io.mindspice.jxch.rpc.http.WalletAPI;
-import io.mindspice.jxch.transact.jobs.mint.MintService;
+import io.mindspice.jxch.rpc.schemas.wallet.nft.MetaData;
 import io.mindspice.jxch.transact.logging.TLogger;
 import io.mindspice.jxch.transact.settings.JobConfig;
 import io.mindspice.mindlib.data.tuples.Pair;
@@ -20,6 +20,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.io.IOException;
+import java.time.LocalTime;
+import java.time.temporal.ChronoUnit;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,7 +36,7 @@ public class ServiceConfig {
 
     @Bean(destroyMethod = "shutdown")
     public ScheduledExecutorService executor() {
-        return Executors.newScheduledThreadPool(10);
+        return Executors.newScheduledThreadPool(6);
     }
 
     @Bean
@@ -43,11 +46,11 @@ public class ServiceConfig {
 
     @Bean
     public BlockchainMonitor blockchainMonitor(
-            @Qualifier("monNodeApi") FullNodeAPI monNodeApi,
-            @Qualifier("monWalletApi") WalletAPI monWalletApi,
-            @Qualifier("okraChiaApi") OkraChiaAPI okraChiaAPI,
-            @Qualifier("okraNFTApi") OkraNFTAPI okraNFTAPI,
-            @Qualifier("mintService") MintService mintService,
+            @Qualifier("mainNodeAPI") FullNodeAPI monNodeApi,
+            @Qualifier("monWalletAPI") WalletAPI monWalletApi,
+            @Qualifier("okraChiaAPI") OkraChiaAPI okraChiaAPI,
+            @Qualifier("okraNFTAPI") OkraNFTAPI okraNFTAPI,
+            @Qualifier("mintService") CardMintService mintService,
             @Qualifier("cardList") List<Card> cardList,
             @Qualifier("assetTable") Map<String, Pair<String, PackType>> assetTable,
             @Qualifier("executor") ScheduledExecutorService executor,
@@ -57,17 +60,17 @@ public class ServiceConfig {
                 monNodeApi, monWalletApi, okraChiaAPI, okraNFTAPI, mintService,
                 assetTable, cardList, Settings.get().startHeight, logger);
 
-        executor.scheduleAtFixedRate(monitor, 0, 5, TimeUnit.SECONDS);
+        executor.scheduleAtFixedRate(monitor, 0, 2000, TimeUnit.MILLISECONDS);
         return monitor;
     }
 
     @Bean
     CardMintService mintService(
             @Qualifier("executor") ScheduledExecutorService executor,
-            @Qualifier("monNodeApi") FullNodeAPI nodeApi,
-            @Qualifier("monWalletApi") WalletAPI walletApi,
+            @Qualifier("mainNodeAPI") FullNodeAPI nodeApi,
+            @Qualifier("mintWalletAPI") WalletAPI walletApi,
             @Qualifier("customLogger") TLogger logger,
-            @Qualifier("okraNFTApi") OkraNFTAPI nftApi
+            @Qualifier("okraNFTAPI") OkraNFTAPI nftApi
     ) {
         try {
             JobConfig jobConfig = JobConfig.loadConfig(Settings.get().mintJobConfig);
@@ -81,35 +84,67 @@ public class ServiceConfig {
     }
 
     @Bean
-    TokenService tokenService(
+    TokenService okraTokenService(
             @Qualifier("executor") ScheduledExecutorService executor,
-            @Qualifier("monNodeApi") FullNodeAPI nodeApi,
-            @Qualifier("monWalletApi") WalletAPI walletApi,
+            @Qualifier("mainNodeAPI") FullNodeAPI nodeApi,
+            @Qualifier("transactWalletAPI") WalletAPI walletApi,
             @Qualifier("customLogger") TLogger logger,
-            @Qualifier("okraNFTApi") OkraNFTAPI nftApi
+            @Qualifier("okraNFTAPI") OkraNFTAPI nftApi
     ) {
         try {
-            JobConfig jobConfig = JobConfig.loadConfig(Settings.get().tokenJobConfig);
-            TokenService tokenService = new TokenService(executor, jobConfig, logger, nodeApi, walletApi, false);
+            JobConfig jobConfig = JobConfig.loadConfig(Settings.get().okraJobConfig);
+            TokenService tokenService = new TokenService(executor, jobConfig, logger, nodeApi, walletApi, nftApi);
             tokenService.start();
-
-//            var t1 = new TransactionItem(
-//                    new Addition("f5698a098d6e89052ad7e829afbd545c21b137cd749ea11c633a8b20194f0a1d", ChiaUtils.catToMojos(0.2).longValue())
-//            );
-//            var t2 = new TransactionItem(
-//                    new Addition("778fe3a85247cc0e22a75861d9045865ac8a2b995dc0b5606caf9eac8f0add9b", ChiaUtils.catToMojos(0.2).longValue())
-//            );
-//            var t3 = new TransactionItem(
-//                    new Addition("ecefc3a3316727f4abfdd5d52d74888962b890618a0944d3b6ae709f09eedf6c", ChiaUtils.catToMojos(0.2).longValue())
-//            );
-//            tokenService.submit(List.of(t1,t2,t3));
-//            System.out.println(tokenService.size());
-//            System.out.println(tokenService.isRunning());
-
             return tokenService;
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @Bean
+    TokenService outrTokenService(
+            @Qualifier("executor") ScheduledExecutorService executor,
+            @Qualifier("mainNodeAPI") FullNodeAPI nodeApi,
+            @Qualifier("transactWalletAPI") WalletAPI walletApi,
+            @Qualifier("customLogger") TLogger logger,
+            @Qualifier("okraNFTAPI") OkraNFTAPI nftApi
+    ) {
+        try {
+            JobConfig jobConfig = JobConfig.loadConfig(Settings.get().outrJobConfig);
+            TokenService tokenService = new TokenService(executor, jobConfig, logger, nodeApi, walletApi, nftApi);
+            tokenService.start();
+            return tokenService;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Bean
+    RewardService rewardService(
+            @Qualifier("okraGameAPI") OkraGameAPI okraGameAPI,
+            @Qualifier("okraNFTAPI") OkraNFTAPI okraNFTAPI,
+            @Qualifier("okraChiaAPI") OkraChiaAPI okraChiaAPI,
+            @Qualifier("mintService") CardMintService mintService,
+            @Qualifier("mainNodeAPI") FullNodeAPI nodeAPI,
+            @Qualifier("okraTokenService") TokenService okraTokenService,
+            @Qualifier("outrTokenService") TokenService outrTokenService,
+            @Qualifier("cardList") List<Card> cardList,
+            @Qualifier("customLogger") CustomLogger customLogger,
+            @Qualifier("executor") ScheduledExecutorService exec) {
+        RewardService rewardService = new RewardService(
+                okraGameAPI,
+                okraNFTAPI,
+                okraChiaAPI,
+                nodeAPI,
+                mintService,
+                okraTokenService,
+                outrTokenService,
+                cardList,
+                customLogger
+        );
+        var timeToMidnight = ChronoUnit.MINUTES.between(LocalTime.now(), LocalTime.MIDNIGHT);
+        exec.scheduleWithFixedDelay(rewardService, timeToMidnight, 1440, TimeUnit.MINUTES);
+        return rewardService;
     }
 
     @Bean
@@ -119,26 +154,25 @@ public class ServiceConfig {
 
     @Bean
     AvatarService avatarService(
-            @Qualifier("monWalletApi") WalletAPI monWalletApi,
-            @Qualifier("okraGameApi") OkraGameAPI okraGameAPI,
+            @Qualifier("monWalletAPI") WalletAPI monWalletApi,
+            @Qualifier("okraGameAPI") OkraGameAPI okraGameAPI,
             @Qualifier("s3Service") S3Service s3Service,
             @Qualifier("customLogger") CustomLogger customLogger
     ) {
-        return new AvatarService(monWalletApi, okraGameAPI, s3Service(), customLogger);
+        return new AvatarService(monWalletApi, okraGameAPI, s3Service, customLogger);
     }
 
-
+    // <CatAddress,<AssetId,PackType>
     @Bean
-    //<CatAddress,<AssetId,PackType>
     public Map<String, Pair<String, PackType>> assetTable() {
         HashMap<String, Pair<String, PackType>> packMap = new HashMap<>();
         packMap.put(
-                "0x269d670b4816d8b7e411567d3994ac565f32707e1733a7e4ceea9d549621541f",
-                new Pair<>("0xd8a533fbac72f18894bafcce792190cf43bea96a127dca30088d2e9fd4a4e3e9", PackType.STARTER)
+                Settings.get().boosterAddress,
+                new Pair<>(Settings.get().boosterTail, PackType.BOOSTER)
         );
         packMap.put(
-                "0x922bbe4541cd140ccd9021d3a6125aad03075ec165edc15431bd2a6036e20b60", // Address
-                new Pair<>("0x055fe650c6bbcd5820ba326f0cec9facf70637c5cbea83e6ef8c7e1fc037cb06", PackType.BOOSTER) // Asset Id, Type
+                Settings.get().starterAddress, // Address
+                new Pair<>(Settings.get().starterTail, PackType.STARTER)
         );
         return packMap;
     }
@@ -147,7 +181,22 @@ public class ServiceConfig {
     public List<Card> cardList(
             OkraNFTAPI nftApi
     ) {
-        return nftApi.getCardCollection("test_cards").data().orElseThrow();
+        return nftApi.getCardCollection("test_cards").data()
+                .orElseThrow(() -> new IllegalStateException("Failed to load card collection from database"));
+    }
+
+    @Bean
+    MetaData accountNFTMeta() {
+        return new MetaData(
+                Collections.unmodifiableList(Settings.get().didUris),
+                Collections.unmodifiableList(Settings.get().didMetaUris),
+                Collections.unmodifiableList(Settings.get().didLicenseUris),
+                Settings.get().didHash,
+                Settings.get().didMetaHash,
+                Settings.get().didLicenseHash,
+                1,
+                1
+        );
     }
 
     @Bean

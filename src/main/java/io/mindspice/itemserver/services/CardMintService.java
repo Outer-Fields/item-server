@@ -8,15 +8,18 @@ import io.mindspice.jxch.rpc.http.WalletAPI;
 import io.mindspice.jxch.rpc.schemas.wallet.nft.NftInfo;
 import io.mindspice.jxch.rpc.util.JsonUtils;
 import io.mindspice.jxch.rpc.util.RPCException;
-import io.mindspice.jxch.transact.jobs.mint.MintItem;
-import io.mindspice.jxch.transact.jobs.mint.MintService;
+import io.mindspice.jxch.transact.service.mint.MintItem;
+import io.mindspice.jxch.transact.service.mint.MintService;
 import io.mindspice.jxch.transact.logging.TLogLevel;
 import io.mindspice.jxch.transact.logging.TLogger;
 import io.mindspice.jxch.transact.settings.JobConfig;
 import io.mindspice.mindlib.data.tuples.Pair;
+import io.mindspice.mindlib.util.FuncUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Supplier;
@@ -57,17 +60,18 @@ public class CardMintService extends MintService {
     }
 
     public int failedMintCount() {
-        {
-            return failedMints.size();
-        }
+        return failedMints.size();
+
     }
 
     @Override
-    protected void onFinish(Pair<List<MintItem>, List<String>> pair) {
-        List<MintItem> mintItems = pair.first();
-        List<String> nftLaunchers = pair.second();
-        if (mintItems.isEmpty()) { return; }// should never happen;
+    protected void onFinish(List<MintItem> mints) {
 
+        tLogger.log(this.getClass(), TLogLevel.INFO, "Finished Mints: " +
+                FuncUtils.defaultOnExcept(() -> JsonUtils.writeString(mints.stream().map(MintItem::nftId).toList()), "[exception]")
+        );
+
+        if (mints.isEmpty()) { return; }// should never happen;
         int height = -1;
         try {
             height = nodeAPI.getHeight().data().orElseThrow(chiaExcept);
@@ -79,36 +83,48 @@ public class CardMintService extends MintService {
 
         // Both list will be the same size as guaranteed by the framework implementation
         List<MintLog> mintLogs = new ArrayList<>();
-        mintLogs.add(new MintLog(mintItems.get(0).uuid(), mintItems.get(1).targetAddress()));
-        for (int i = 0; i < mintItems.size(); ++i) {
-            if (mintLogs.getLast().getUUID().equals(mintItems.get(i).uuid())) {
-                mintLogs.getLast().addLauncher(nftLaunchers.get(i));
+        mintLogs.add(new MintLog(mints.get(0).uuid(), mints.get(0).targetAddress()));
+        for (var mint : mints) {
+            if (mintLogs.getLast().getUUID().equals(mint.uuid())) {
+                mintLogs.getLast().addNftId(mint.nftId());
             } else {
-                mintLogs.add(new MintLog(mintItems.get(0).uuid(), mintItems.get(1).targetAddress()));
-                mintLogs.getLast().addLauncher(nftLaunchers.get(i));
+                mintLogs.add(new MintLog(mint.uuid(), mint.targetAddress()));
+                mintLogs.getLast().addNftId(mint.nftId());
             }
 
             boolean isAccount = false;
             try {
-                NftInfo nftInfo = walletAPI.nftGetInfo(nftLaunchers.get(i)).data().orElseThrow(chiaExcept);
+                NftInfo nftInfo = walletAPI.nftGetInfo(mint.nftId()).data().orElseThrow(chiaExcept);
 
-                if (mintItems.get(i).uuid().contains("account:")) {
+                if (mint.uuid().contains("account:")) {
                     isAccount = true;
-                    nftApi.addNewAccountNFT(
-                            -1, nftInfo.ownerDid(), nftInfo.nftCoinId(), nftLaunchers.get(i), height
+                    var resp = nftApi.addNewAccountNFT(
+                            -1, nftInfo.ownerDid(), nftInfo.nftCoinId(), nftInfo.launcherId(), height
                     );
+                    System.out.println(resp);
                 } else {
                     nftApi.addNewCardNFT(
-                            nftInfo.ownerDid(), nftInfo.nftCoinId(), nftLaunchers.get(i),
+                            nftInfo.ownerDid(), nftInfo.nftCoinId(), nftInfo.launcherId(),
                             nftInfo.licenseUris().get(1), height
                     );
                 }
             } catch (Exception e) {
-                tLogger.log(this.getClass(), TLogLevel.FAILED, "Failed database addition for launcher ids: " +
-                        nftLaunchers.get(i) + " | isAccount: " + isAccount);
+                tLogger.log(this.getClass(), TLogLevel.FAILED, "Failed database addition for nft ids: " +
+                        mint.nftId() + " | isAccount: " + isAccount);
             }
         }
-        Thread.ofVirtual().start(() -> mintLogs.forEach(nftApi::addMintLog));
-        // database call for mint logs
+        mintLogs.forEach(l -> Thread.ofVirtual().start(() -> {
+            try {
+                var resp = nftApi.addMintLog(l);
+                if (!resp.success()) {
+                    tLogger.log(this.getClass(), TLogLevel.ERROR, " Failed to add mint log:" +
+                            FuncUtils.defaultOnExcept(() -> JsonUtils.writeString(l), "[exception]"));
+                }
+            } catch (Exception e) {
+                tLogger.log(this.getClass(), TLogLevel.ERROR, " Failed to add mint log:" +
+                        FuncUtils.defaultOnExcept(() -> JsonUtils.writeString(l), "[exception]"));
+            }
+        }));
+
     }
 }

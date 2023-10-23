@@ -23,7 +23,8 @@ import java.util.concurrent.ThreadPoolExecutor;
 @RequestMapping("/admin")
 public class Admin {
     private final CardMintService mintService;
-    private final TokenService tokenService;
+    private final TokenService okraTokenService;
+    private final TokenService outrTokenService;
     private final BlockchainMonitor blockchainMonitor;
     private final ScheduledExecutorService executorService;
     private final FullNodeAPI monNode;
@@ -33,16 +34,18 @@ public class Admin {
 
     public Admin(
             @Qualifier("mintService") CardMintService mintService,
-            @Qualifier("tokenService") TokenService tokenService,
+            @Qualifier("okraTokenService") TokenService okraTokenService,
+            @Qualifier("outrTokenService") TokenService outrTokenService,
             @Qualifier("blockchainMonitor") BlockchainMonitor blockchainMonitor,
             @Qualifier("executor") ScheduledExecutorService executor,
-            @Qualifier("monNodeApi") FullNodeAPI monNode,
-            @Qualifier("monWalletApi") WalletAPI monWallet,
-            @Qualifier("transactionNodeApi") FullNodeAPI transNode,
-            @Qualifier("transactionWalletApi") WalletAPI transWallet
+            @Qualifier("mainNodeAPI") FullNodeAPI monNode,
+            @Qualifier("monWalletAPI") WalletAPI monWallet,
+            @Qualifier("mainNodeAPI") FullNodeAPI transNode,
+            @Qualifier("transactWalletAPI") WalletAPI transWallet
     ) {
         this.mintService = mintService;
-        this.tokenService = tokenService;
+        this.okraTokenService = okraTokenService;
+        this.outrTokenService = outrTokenService;
         this.blockchainMonitor = blockchainMonitor;
         this.executorService = executor;
         this.monNode = monNode;
@@ -51,15 +54,17 @@ public class Admin {
         this.transWallet = transWallet;
     }
 
-    @PostMapping("/status")
-    public ResponseEntity<String> status(@RequestBody String jsonReq) throws JsonProcessingException {
+    @GetMapping("/status")
+    public ResponseEntity<String> status() throws JsonProcessingException {
         try {
             var monNodeInfo = monNode.getBlockChainState().data().orElseThrow();
             var monWalletSync = monWallet.getSyncStatus().data().orElseThrow().synced();
             var monWalletHeight = monWallet.getHeightInfo().data().orElseThrow();
-            var transNodeInfo = transNode.getBlockChainState().data().orElseThrow();
-            var transWalletSync = transWallet.getSyncStatus().data().orElseThrow().synced();
-            var transWalletHeight = transWallet.getHeightInfo().data().orElseThrow();
+
+            // FIXME
+            var transNodeInfo = monNode.getBlockChainState().data().orElseThrow();
+            var transWalletSync = monWallet.getSyncStatus().data().orElseThrow().synced();
+            var transWalletHeight = monWallet.getHeightInfo().data().orElseThrow();
 
             ObjectNode status = new JsonUtils.ObjectBuilder()
                     .put("executor_task_size", ((ThreadPoolExecutor) executorService).getActiveCount())
@@ -67,8 +72,8 @@ public class Admin {
                     .put("executor_core_size", ((ThreadPoolExecutor) executorService).getCorePoolSize())
                     .put("mint_queue_size", mintService.size())
                     .put("failed_mint_size", mintService.failedMintCount())
-                    .put("token_queue_size", tokenService.size())
-                    .put("failed_token_size", tokenService.failedTransactionCount())
+                    .put("token_queue_size", okraTokenService.size())
+                    .put("failed_token_size", okraTokenService.failedTransactionCount())
                     .put("blockchain_monitor_height", blockchainMonitor.getHeight())
                     .put("mempool_current_cost", transNodeInfo.mempoolCost())
                     .put("mempool_pct_full", transNodeInfo.mempoolMaxTotalCost() / transNodeInfo.mempoolCost())
@@ -105,11 +110,12 @@ public class Admin {
     public ResponseEntity<String> reSubmitFailedSends(@RequestBody String jsonReq) throws JsonProcessingException {
         JsonNode node = JsonUtils.readTree(jsonReq);
         if (node.get("resubmit").asBoolean()) {
-            tokenService.reSubmitFailedTransactions();
+            okraTokenService.reSubmitFailedTransactions();
             return new ResponseEntity<>(JsonUtils.writeString(JsonUtils.successMsg(JsonUtils.newEmptyNode())), HttpStatus.OK);
         } else {
             return new ResponseEntity<>(JsonUtils.writeString(JsonUtils.failMsg()), HttpStatus.OK);
         }
     }
+
 
 }

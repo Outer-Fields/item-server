@@ -1,28 +1,34 @@
 package io.mindspice.itemserver.services;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import io.mindspice.databaseservice.client.api.OkraNFTAPI;
+import io.mindspice.databaseservice.client.schema.TransactionLog;
 import io.mindspice.jxch.rpc.http.FullNodeAPI;
 import io.mindspice.jxch.rpc.http.WalletAPI;
-import io.mindspice.jxch.rpc.schemas.wallet.Addition;
+
+import io.mindspice.jxch.rpc.schemas.object.Coin;
 import io.mindspice.jxch.rpc.util.ChiaUtils;
-import io.mindspice.jxch.transact.jobs.transaction.TransactionItem;
-import io.mindspice.jxch.transact.jobs.transaction.TransactionService;
+import io.mindspice.jxch.transact.service.transaction.TransactionItem;
+import io.mindspice.jxch.transact.service.transaction.TransactionService;
 import io.mindspice.jxch.transact.logging.TLogLevel;
 import io.mindspice.jxch.transact.logging.TLogger;
 import io.mindspice.jxch.transact.settings.JobConfig;
 import io.mindspice.mindlib.util.JsonUtils;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledExecutorService;
 
 
 public class TokenService extends TransactionService {
     private final List<TransactionItem> failedTransactions = new CopyOnWriteArrayList<>();
+    private final OkraNFTAPI nftAPI;
 
     public TokenService(ScheduledExecutorService executor, JobConfig config,
-            TLogger tLogger, FullNodeAPI nodeAPI, WalletAPI walletAPI, boolean isCat) {
-        super(executor, config, tLogger, nodeAPI, walletAPI, isCat);
+            TLogger tLogger, FullNodeAPI nodeAPI, WalletAPI walletAPI, OkraNFTAPI nftAPI) {
+        super(executor, config, tLogger, nodeAPI, walletAPI);
+        this.nftAPI = nftAPI;
         tLogger.log(this.getClass(), TLogLevel.INFO, "Started Token Service");
 
     }
@@ -41,8 +47,25 @@ public class TokenService extends TransactionService {
     }
 
     @Override
-    protected void onFinish(List<TransactionItem> list) {
-        System.out.println("Finished: " + list);
+    protected void onFinish(List<TransactionItem> txList) {
+        var txLogs = txList.stream()
+                .map(t -> new TransactionLog(
+                        t.uuid(),
+                        t.coin().puzzleHash(),
+                        t.coin().amount(),
+                        ChiaUtils.getCoinId(t.coin())))
+                .toList();
+
+        txLogs.forEach(l -> Thread.ofVirtual().start(() -> {
+            try {
+                var resp = nftAPI.addTransactionLog(l);
+                if (!resp.success()) {
+                    tLogger.log(this.getClass(), TLogLevel.ERROR, " Failed to add transaction log:" + l);
+                }
+            } catch (Exception e) {
+                tLogger.log(this.getClass(), TLogLevel.ERROR, " Failed to add transaction log:" + l);
+            }
+        }));
     }
 
     public void reSubmitFailedTransactions() {

@@ -44,8 +44,9 @@ public class AvatarService {
     }
 
     public void submit(Pair<Integer, String> updateInfo) {
+        logger.logApp(this.getClass(), TLogLevel.DEBUG, "Received avatar update playerId: " + updateInfo.first()
+                + " | NFT: " + updateInfo.second());
         Thread.ofVirtual().start(updateTask(updateInfo.first(), updateInfo.second()));
-
     }
 
     public Runnable updateTask(int playerId, String nftLauncher) {
@@ -141,7 +142,6 @@ public class AvatarService {
         } finally {
             imageInputStream.close();
         }
-        System.out.println("safe:" + safe);
         return safe;
     }
 

@@ -5,13 +5,11 @@ import io.mindspice.databaseservice.client.schema.Card;
 import io.mindspice.databaseservice.client.schema.CardDomain;
 import io.mindspice.itemserver.Settings;
 import io.mindspice.itemserver.schema.PackPurchase;
-import io.mindspice.itemserver.schema.PackType;
-import io.mindspice.jxch.rpc.util.JsonUtils;
-import io.mindspice.jxch.transact.jobs.mint.MintItem;
-import io.mindspice.jxch.transact.jobs.mint.MintService;
+
+import io.mindspice.jxch.transact.service.mint.MintItem;
+import io.mindspice.jxch.transact.service.mint.MintService;
 import io.mindspice.jxch.transact.logging.TLogLevel;
 import io.mindspice.jxch.transact.logging.TLogger;
-import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -29,6 +27,7 @@ public class PackMint implements Runnable {
     private final OkraNFTAPI nftAPI;
     private final Random rand;
     private final TLogger logger;
+    private double[] lvlList = new double[]{2.2, 2.3, 2.4, 2.5, 2.6};
     IntPredicate chance = threshold -> ThreadLocalRandom.current().nextInt(100) < threshold;
 
     public PackMint(List<Card> cardList, List<PackPurchase> packPurchases, MintService mintService, OkraNFTAPI nftAPI
@@ -39,6 +38,10 @@ public class PackMint implements Runnable {
         this.cardList = cardList;
         this.logger = logger;
         rand = new Random();
+    }
+
+    private  double getRandomLvl() {
+        return lvlList[ThreadLocalRandom.current().nextInt(lvlList.length)];
     }
 
     @Override
@@ -74,9 +77,9 @@ public class PackMint implements Runnable {
                             for (Card pawn : pawnCards) {
                                 cards.addAll(CardSelect.getCards(cardList, 2, CardDomain.WEAPON, pawn.type()));
                                 cards.addAll(CardSelect.getCards(cardList, 1, CardDomain.TALISMAN, null));
-                                cards.addAll(CardSelect.getCards(cardList, 3, CardDomain.POWER, null));
-                                cards.addAll(CardSelect.getCards(cardList, 6, CardDomain.ACTION, pawn.type()));
-                                cards.addAll(CardSelect.getCards(cardList, 6, CardDomain.ABILITY, null));
+                                cards.addAll(CardSelect.getCardsWithLimit(cardList, 3, CardDomain.POWER, null, getRandomLvl()));
+                                cards.addAll(CardSelect.getCardsWithLimit(cardList, 6, CardDomain.ACTION, pawn.type(), getRandomLvl()));
+                                cards.addAll(CardSelect.getCardsWithLimit(cardList, 6, CardDomain.ABILITY, null, getRandomLvl()));
                             }
                             cards.addAll(pawnCards);
                         }
@@ -92,7 +95,7 @@ public class PackMint implements Runnable {
                                 MintItem item = new MintItem(pack.address(), updatedMeta, pack.uuid());
                                 packMints.add(item);
                             } catch (Exception e) {
-                                logger.log(this.getClass(), TLogLevel.ERROR, "Virtual thread from card calculation for card: " + card, e);
+                                logger.log(this.getClass(), TLogLevel.ERROR, "Virtual thread from card calculation for card: " + card.uid(), e);
                                 failed.set(true);
                             } finally {
                                 latch.countDown();
