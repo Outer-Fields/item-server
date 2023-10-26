@@ -14,6 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Arrays;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 
@@ -29,7 +30,7 @@ public class Admin {
     private final ScheduledExecutorService executorService;
     private final FullNodeAPI monNode;
     private final WalletAPI monWallet;
-    private final FullNodeAPI transNode;
+    private final WalletAPI mintWallet;
     private final WalletAPI transWallet;
 
     public Admin(
@@ -40,7 +41,7 @@ public class Admin {
             @Qualifier("executor") ScheduledExecutorService executor,
             @Qualifier("mainNodeAPI") FullNodeAPI monNode,
             @Qualifier("monWalletAPI") WalletAPI monWallet,
-            @Qualifier("mainNodeAPI") FullNodeAPI transNode,
+            @Qualifier("mintWalletAPI") WalletAPI mintWallet,
             @Qualifier("transactWalletAPI") WalletAPI transWallet
     ) {
         this.mintService = mintService;
@@ -50,7 +51,7 @@ public class Admin {
         this.executorService = executor;
         this.monNode = monNode;
         this.monWallet = monWallet;
-        this.transNode = transNode;
+        this.mintWallet = mintWallet;
         this.transWallet = transWallet;
     }
 
@@ -58,40 +59,42 @@ public class Admin {
     public ResponseEntity<String> status() throws JsonProcessingException {
         try {
             var monNodeInfo = monNode.getBlockChainState().data().orElseThrow();
-            var monWalletSync = monWallet.getSyncStatus().data().orElseThrow().synced();
-            var monWalletHeight = monWallet.getHeightInfo().data().orElseThrow();
-
-            // FIXME
-            var transNodeInfo = monNode.getBlockChainState().data().orElseThrow();
-            var transWalletSync = monWallet.getSyncStatus().data().orElseThrow().synced();
-            var transWalletHeight = monWallet.getHeightInfo().data().orElseThrow();
+//            var transNodeSync = transWallet.getSyncStatus().data().orElseThrow().synced();
+//            var transNodeHeight = transWallet.getHeightInfo().data().orElseThrow();
+//            var mintNodeSync = mintWallet.getSyncStatus().data().orElseThrow().synced();
+//            var mintNodeHeight = mintWallet.getHeightInfo().data().orElseThrow();
+//            var monWalletSync = mintWallet.getSyncStatus().data().orElseThrow().synced();
+//            var monWalletHeight = mintWallet.getHeightInfo().data().orElseThrow();
 
             ObjectNode status = new JsonUtils.ObjectBuilder()
                     .put("executor_task_size", ((ThreadPoolExecutor) executorService).getActiveCount())
                     .put("executor_max_size", ((ThreadPoolExecutor) executorService).getPoolSize())
                     .put("executor_core_size", ((ThreadPoolExecutor) executorService).getCorePoolSize())
                     .put("mint_queue_size", mintService.size())
-                    .put("failed_mint_size", mintService.failedMintCount())
-                    .put("token_queue_size", okraTokenService.size())
+                    .put("mint_failed_size", mintService.failedMintCount())
+                    .put("okra_queue_size", okraTokenService.size())
+                    .put("okra_failed_size", okraTokenService.failedTransactionCount())
+                    .put("outr_queue_size", outrTokenService.size())
+                    .put("outr_fail_size", outrTokenService.failedTransactionCount())
                     .put("failed_token_size", okraTokenService.failedTransactionCount())
                     .put("blockchain_monitor_height", blockchainMonitor.getHeight())
-                    .put("mempool_current_cost", transNodeInfo.mempoolCost())
-                    .put("mempool_pct_full", transNodeInfo.mempoolMaxTotalCost() / transNodeInfo.mempoolCost())
-                    .put("mempool_fees", transNodeInfo.mempoolFees())
-                    .put("mempool_min_fees", transNodeInfo.mempoolMinFees())
+                    .put("mempool_current_cost", monNodeInfo.mempoolCost())
+                    .put("mempool_pct_full", monNodeInfo.mempoolCost() / monNodeInfo.mempoolMaxTotalCost())
+                    .put("mempool_fees", monNodeInfo.mempoolFees())
+                    .put("mempool_min_fees", monNodeInfo.mempoolMinFees())
                     .put("monitor_node_synced", monNodeInfo.sync().synced())
                     .put("monitor_node_height", monNodeInfo.peak().height())
-                    .put("mon_wallet_synced", monWalletSync)
-                    .put("monitor_wallet_height", monWalletHeight)
-                    .put("transaction_node_synced", transNodeInfo.sync().synced())
-                    .put("transaction_node_height", transNodeInfo.peak().height())
-                    .put("transaction_wallet_synced", transWalletSync)
-                    .put("transaction_wallet_height", transWalletHeight)
+//                    .put("monitor_wallet_synced", monWalletSync)
+//                    .put("monitor_wallet_height", monWalletHeight)
+//                    .put("transaction_wallet_synced", transNodeSync)
+//                    .put("transaction_wallet_height", transNodeHeight)
+//                    .put("mint_wallet_synced", mintNodeSync)
+//                    .put("mint_wallet_height", mintNodeHeight)
                     .buildNode();
             JsonNode msg = JsonUtils.successMsg(status);
             return new ResponseEntity<>(JsonUtils.writeString(msg), HttpStatus.OK);
         } catch (Exception e) {
-            return new ResponseEntity<>(JsonUtils.writeString(JsonUtils.errorMsg(e.getMessage())), HttpStatus.OK);
+            return new ResponseEntity<>(JsonUtils.writeString(JsonUtils.errorMsg(e.getMessage() + Arrays.toString(e.getStackTrace()))), HttpStatus.OK);
         }
     }
 
@@ -111,6 +114,7 @@ public class Admin {
         JsonNode node = JsonUtils.readTree(jsonReq);
         if (node.get("resubmit").asBoolean()) {
             okraTokenService.reSubmitFailedTransactions();
+            outrTokenService.reSubmitFailedTransactions();
             return new ResponseEntity<>(JsonUtils.writeString(JsonUtils.successMsg(JsonUtils.newEmptyNode())), HttpStatus.OK);
         } else {
             return new ResponseEntity<>(JsonUtils.writeString(JsonUtils.failMsg()), HttpStatus.OK);

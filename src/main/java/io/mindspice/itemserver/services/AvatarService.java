@@ -1,6 +1,7 @@
 package io.mindspice.itemserver.services;
 
 import io.mindspice.databaseservice.client.api.OkraGameAPI;
+import io.mindspice.itemserver.util.Utils;
 import io.mindspice.jxch.rpc.http.WalletAPI;
 import io.mindspice.jxch.rpc.schemas.wallet.nft.NftInfo;
 import io.mindspice.jxch.transact.logging.TLogLevel;
@@ -63,7 +64,7 @@ public class AvatarService {
                         return;
                     }
 
-                    NftInfo nftInfo = walletAPI.nftGetInfo(nftLauncher).data().orElseThrow();
+                    NftInfo nftInfo =  Utils.nftGetInfoWrapper(walletAPI, nftLauncher);
                     List<String> uris = nftInfo.dataUris();
                     byte[] imgBytes = getConvertedImage(uris);
                     if (imgBytes == null || imgBytes.length > 1024 * 66) {

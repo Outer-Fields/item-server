@@ -9,7 +9,9 @@ import io.mindspice.databaseservice.client.schema.NftUpdate;
 import io.mindspice.itemserver.schema.PackPurchase;
 import io.mindspice.itemserver.schema.PackType;
 import io.mindspice.itemserver.Settings;
+import io.mindspice.itemserver.services.CustomLogger;
 import io.mindspice.itemserver.services.PackMint;
+import io.mindspice.itemserver.util.Utils;
 import io.mindspice.jxch.rpc.http.FullNodeAPI;
 import io.mindspice.jxch.rpc.http.WalletAPI;
 import io.mindspice.jxch.rpc.schemas.ApiResponse;
@@ -28,7 +30,10 @@ import io.mindspice.mindlib.util.FuncUtils;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 
 public class BlockchainMonitor implements Runnable {
@@ -40,7 +45,7 @@ public class BlockchainMonitor implements Runnable {
     private final MintService mintService;
     private final Map<String, Pair<String, PackType>> assetMap;
     private final List<Card> cardList;
-    private final TLogger logger;
+    private final CustomLogger logger;
     private final Semaphore semaphore = new Semaphore(1);
 
     protected final Supplier<RPCException> chiaExcept =
@@ -54,7 +59,7 @@ public class BlockchainMonitor implements Runnable {
             MintService mintService, Map<String,
             Pair<String, PackType>> assetMap,
             List<Card> cardList, int startHeight,
-            TLogger logger) {
+            CustomLogger logger) {
 
         nextHeight = startHeight;
         this.nodeAPI = nodeAPI;
@@ -65,10 +70,10 @@ public class BlockchainMonitor implements Runnable {
         this.assetMap = assetMap;
         this.cardList = cardList;
         this.logger = logger;
-        logger.log(this.getClass(), TLogLevel.INFO, "Started Blockchain Monitor");
+        logger.logApp(this.getClass(), TLogLevel.INFO, "Started Blockchain Monitor");
     }
 
-    public int getNextHeight(){
+    public int getNextHeight() {
         return nextHeight;
     }
 
@@ -83,23 +88,26 @@ public class BlockchainMonitor implements Runnable {
             }
             long start = System.currentTimeMillis();
 
-            AdditionsAndRemovals  coinRecords = chiaAPI.getCoinRecordsByHeight(nextHeight)
+            AdditionsAndRemovals coinRecords = chiaAPI.getCoinRecordsByHeight(nextHeight)
                     .data().orElseThrow(chiaExcept);
 
             List<CoinRecord> additions = coinRecords.additions().stream().filter(a -> !a.coinbase()).toList();
             List<CoinRecord> removals = coinRecords.removals().stream().filter(a -> !a.coinbase()).toList();
 
             if (additions.isEmpty()) {
-                logger.log(this.getClass(), TLogLevel.INFO, "Finished scan of block height: " + nextHeight +
+                logger.logApp(this.getClass(), TLogLevel.INFO, "Finished scan of block height: " + nextHeight +
                         " | Additions: 0" +
                         " | Block scan took: " + (System.currentTimeMillis() - start) + " ms");
                 nextHeight++; // Non-atomic inc doesn't matter, non-critical, is volatile to observe when monitoring
                 return;
             }
 
+            // NOTE offers need to be parsed via finding the parent in the removals since they do some intermediate operations
             CompletableFuture<CardAndAccountCheck> cardAndAccountCheck = CompletableFuture.supplyAsync(() -> {
                 var cardOrAccountUpdates = nftAPI.checkIfCardOrAccountExists(
-                        additions.stream().map(a -> a.coin().parentCoinInfo()).toList()
+                        Stream.concat(additions.stream(), removals.stream())
+                                .map(a -> a.coin().parentCoinInfo())
+                                .distinct().toList()
                 );
 
                 if (cardOrAccountUpdates.data().isPresent()) {
@@ -118,7 +126,7 @@ public class BlockchainMonitor implements Runnable {
                         try {
                             ApiResponse<CatSenderInfo> catInfoResp = nodeAPI.getCatSenderInfo(record);
                             if (!catInfoResp.success()) {
-                                logger.log(this.getClass(), TLogLevel.ERROR, " Failed asset lookup, wrong asset?" +
+                                logger.logApp(this.getClass(), TLogLevel.ERROR, " Failed asset lookup, wrong asset?" +
                                         " | Coin: " + ChiaUtils.getCoinId(record.coin()) +
                                         " | Amount(mojos / 1000): " + amount +
                                         " | Error: " + catInfoResp.error());
@@ -127,7 +135,7 @@ public class BlockchainMonitor implements Runnable {
 
                             CatSenderInfo catInfo = catInfoResp.data().orElseThrow(chiaExcept);
                             if (!catInfo.assetId().equals(assetMap.get(record.coin().puzzleHash()).first())) {
-                                logger.log(this.getClass(), TLogLevel.INFO, "Wrong Asset Received: " + catInfo.assetId()
+                                logger.logApp(this.getClass(), TLogLevel.INFO, "Wrong Asset Received: " + catInfo.assetId()
                                         + " Expected: " + assetMap.get(record.coin().puzzleHash()).first()
                                         + " Amount: " + record.coin().amount());
                                 continue;
@@ -136,7 +144,7 @@ public class BlockchainMonitor implements Runnable {
                             PackType packType = assetMap.get(record.coin().puzzleHash()).second();
                             for (int i = 0; i < amount; ++i) {
                                 String uuid = UUID.randomUUID().toString();
-                                logger.log(this.getClass(), TLogLevel.INFO, "Submitted pack purchase " +
+                                logger.logApp(this.getClass(), TLogLevel.INFO, "Submitted pack purchase " +
                                         " | UUID: " + uuid +
                                         " | Coin: " + ChiaUtils.getCoinId(record.coin()) +
                                         " | Amount(mojos / 1000): " + amount +
@@ -146,7 +154,7 @@ public class BlockchainMonitor implements Runnable {
                                 packPurchases.add(new PackPurchase(catInfo.senderPuzzleHash(), packType, uuid));
                             }
                         } catch (RPCException e) {
-                            logger.log(this.getClass(), TLogLevel.FAILED, "Failed asset lookups at height: " + nextHeight +
+                            logger.logApp(this.getClass(), TLogLevel.FAILED, "Failed asset lookups at height: " + nextHeight +
                                     " | Reason: " + e.getMessage() +
                                     " | Coin: " + ChiaUtils.getCoinId(record.coin()) +
                                     " | Amount(mojos / 1000): " + amount);
@@ -174,12 +182,12 @@ public class BlockchainMonitor implements Runnable {
                 virtualExec.submit(new PackMint(cardList, packPurchasesResults, mintService, nftAPI, logger));
                 foundChange = true;
             }
-            logger.log(this.getClass(), TLogLevel.INFO, "Finished scan of block height: " + nextHeight +
+            logger.logApp(this.getClass(), TLogLevel.INFO, "Finished scan of block height: " + nextHeight +
                     " | Additions: " + additions.size() +
                     " | Block scan took: " + (System.currentTimeMillis() - start) + " ms");
 
             if (foundChange) {
-                logger.log(this.getClass(), TLogLevel.INFO, "Changes detected" +
+                logger.logApp(this.getClass(), TLogLevel.INFO, "Changes detected" +
                         " | Height: " + nextHeight +
                         " | Card NFTs: " + (cardAndAccountResults != null ? cardAndAccountResults.existingCards().toString() : "[]") +
                         " | Account NFTs: " + (cardAndAccountResults != null ? cardAndAccountResults.existingAccounts().toString() : "[]") +
@@ -190,7 +198,7 @@ public class BlockchainMonitor implements Runnable {
 
         } catch (
                 Exception e) {
-            logger.log(this.getClass(), TLogLevel.FAILED, "Failed to scan height: " + nextHeight +
+            logger.logApp(this.getClass(), TLogLevel.FAILED, "Failed to scan height: " + nextHeight +
                     " | Reason: " + e.getMessage(), e);
         } finally {
             semaphore.release();
@@ -215,7 +223,7 @@ public class BlockchainMonitor implements Runnable {
             try {
                 long startTime = System.currentTimeMillis();
                 for (var launcherId : cardUpdates) {
-                    NftInfo newInfo = walletAPI.nftGetInfo(launcherId).data().orElseThrow(chiaExcept);
+                    NftInfo newInfo = Utils.nftGetInfoWrapper(walletAPI, launcherId);
                     NftUpdate updatedInfo = new NftUpdate(
                             newInfo.nftCoinId(),
                             launcherId,
@@ -224,14 +232,14 @@ public class BlockchainMonitor implements Runnable {
                     );
                     var updateRtn = nftAPI.updateCardDid(updatedInfo);
                     if (!updateRtn.success()) {
-                        logger.log(this.getClass(), TLogLevel.ERROR, "Failed Updating card launcher: "
-                                + updatedInfo.launcherId() + " with coin :" + newInfo.nftCoinId()  + " @ Height : "
-                                + (nextHeight -1) + " Reason: " + updateRtn.error_msg());
+                        logger.logApp(this.getClass(), TLogLevel.ERROR, "Failed Updating card launcher: "
+                                + updatedInfo.launcherId() + " with coin :" + newInfo.nftCoinId() + " @ Height : "
+                                + (nextHeight - 1) + " Reason: " + updateRtn.error_msg());
                     }
                 }
 
                 for (var didInfo : accountUpdates) {
-                    NftInfo newInfo = walletAPI.nftGetInfo(didInfo.launcherId()).data().orElseThrow(chiaExcept);
+                    NftInfo newInfo = Utils.nftGetInfoWrapper(walletAPI, didInfo.launcherId());
                     NftUpdate updatedInfo = new NftUpdate(
                             newInfo.nftCoinId(),
                             didInfo.launcherId(),
@@ -241,16 +249,16 @@ public class BlockchainMonitor implements Runnable {
                     );
                     var updateRtn = nftAPI.updateAccountDid(updatedInfo);
                     if (!updateRtn.success()) {
-                        logger.log(this.getClass(), TLogLevel.ERROR, "Failed Updating account launcher: "
-                                + didInfo.launcherId() + " with coin :" + newInfo.nftCoinId()  + " @ Height : "
-                                + (nextHeight -1) + " Reason: " + updateRtn.error_msg());
+                        logger.logApp(this.getClass(), TLogLevel.ERROR, "Failed Updating account launcher: "
+                                + didInfo.launcherId() + " with coin :" + newInfo.nftCoinId() + " @ Height : "
+                                + (nextHeight - 1) + " Reason: " + updateRtn.error_msg());
                     }
                 }
-                logger.log(this.getClass(), TLogLevel.INFO, "Successfully updated NFTs: "
+                logger.logApp(this.getClass(), TLogLevel.INFO, "Successfully updated NFTs: "
                         + "Cards:" + cardUpdates + " | accounts: " + accountUpdates
                         + " | Update took: " + (System.currentTimeMillis() - startTime));
             } catch (Exception e) {
-                logger.log(this.getClass(), TLogLevel.FAILED, "Failed updating NFTs: " +
+                logger.logApp(this.getClass(), TLogLevel.FAILED, "Failed updating NFTs: " +
                         cardUpdates + accountUpdates +
                         " | Reason: " + e.getMessage(), e);
             }

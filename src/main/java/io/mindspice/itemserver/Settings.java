@@ -15,6 +15,7 @@ public class Settings {
 
     /* Monitor */
     public volatile int startHeight;
+    public volatile int chainScanInterval;
     public volatile int heightBuffer;
     public volatile boolean isPaused;
 

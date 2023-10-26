@@ -3,9 +3,11 @@ package io.mindspice.itemserver.api;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import io.mindspice.databaseservice.client.api.OkraNFTAPI;
 import io.mindspice.databaseservice.client.schema.Card;
 import io.mindspice.itemserver.schema.ApiMint;
 import io.mindspice.itemserver.Settings;
+import io.mindspice.itemserver.schema.ApiMintReq;
 import io.mindspice.itemserver.services.AvatarService;
 import io.mindspice.jxch.rpc.schemas.wallet.nft.MetaData;
 import io.mindspice.jxch.transact.logging.TLogLevel;
@@ -20,9 +22,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
-import java.util.List;
-import java.util.NoSuchElementException;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.IntStream;
 
 
@@ -32,59 +32,45 @@ import java.util.stream.IntStream;
 public class Internal {
     private final MintService mintService;
     private final AvatarService avatarService;
+    private final OkraNFTAPI nftAPI;
     private final MetaData accountNFTMeta;
     private final TLogger logger;
-
-    private final List<Card> cardList;
-    public static final TypeReference<List<ApiMint>> API_MINT_LIST = new TypeReference<>() { };
 
     public Internal(
             @Qualifier("mintService") MintService mintService,
             @Qualifier("avatarService") AvatarService avatarService,
-            @Qualifier("cardList") List<Card> cardList,
+            @Qualifier("okraNFTAPI") OkraNFTAPI nftAPI,
             @Qualifier("customLogger") TLogger customLogger,
             @Qualifier("accountNFTMeta") MetaData accountNFTMeta
     ) {
         this.mintService = mintService;
         this.avatarService = avatarService;
-        this.cardList = cardList;
+        this.nftAPI = nftAPI;
         this.accountNFTMeta = accountNFTMeta;
         this.logger = customLogger;
     }
 
-    @PostMapping("/mint_account_nft")
-    public ResponseEntity<String> mintAccountNft(@RequestBody String jsonReq) throws JsonProcessingException {
-        JsonNode node = JsonUtils.readTree(jsonReq);
-        int playerId = node.get("player_id").asInt();
-        String address = node.get("address").asText();
-        MintItem mintItem = new MintItem(
-                address,
-                Settings.getAccountMintMetaData(),
-                "account:" + playerId + ":" + UUID.randomUUID().toString()
-        );
-        mintService.submit(mintItem);
-        return new ResponseEntity<>(HttpStatus.OK);
-    }
 
     @PostMapping("/mint_card_nfts")
     public ResponseEntity<String> mintCardNfts(@RequestBody String jsonReq) throws IOException {
-        JsonNode node = JsonUtils.readTree(jsonReq);
-        List<ApiMint> mints = JsonUtils.readJson(node.traverse(), API_MINT_LIST);
-        List<MintItem> mintItems;
         try {
-            mintItems = mints.stream().map(
-                    m -> new MintItem(
+            ApiMintReq mintReq = JsonUtils.readValue(jsonReq, ApiMintReq.class);
+            List<Card> cards = nftAPI.getCardCollection(mintReq.collection()).data().orElseThrow();
+            var mints = mintReq.mint_list().stream().map(m ->
+                    new MintItem(
                             m.address(),
-                            cardList.stream()
-                                    .filter(c -> c.uid().equals(m.cardUID()))
-                                    .findFirst().orElseThrow().metaData(),
-                            m.jobUUID())
+                            m.card_uid().equals("DID")
+                                    ? accountNFTMeta
+                                    : cards.stream().filter(c -> c.uid().equals(m.card_uid())).findFirst().orElseThrow().metaData()
+                                    .cloneSetEdt(nftAPI.getAndIncEdt(mintReq.collection(), m.card_uid()).data().get()),
+                            m.job_uuid())
             ).toList();
-        } catch (NoSuchElementException e) {
+            mintService.submit(mints);
+        } catch (Exception e) {
             logger.log(this.getClass(), TLogLevel.ERROR, "Failed to accept api mint", e);
-            return new ResponseEntity<>(JsonUtils.writeString(JsonUtils.errorMsg(e.getMessage())), HttpStatus.OK);
+            return new ResponseEntity<>(JsonUtils.writeString(JsonUtils.errorMsg(e.getMessage() + " | "
+                    + Arrays.toString(e.getStackTrace()))), HttpStatus.OK);
         }
-        mintService.submit(mintItems);
         return new ResponseEntity<>(
                 JsonUtils.writeString(JsonUtils.successMsg(JsonUtils.newEmptyNode())), HttpStatus.OK
         );
@@ -109,7 +95,7 @@ public class Internal {
             int amount = node.get("amount").asInt();
             String uuid = "account:" + UUID.randomUUID();
             List<MintItem> mints = IntStream.range(0, amount)
-                    .mapToObj(i -> new MintItem(Settings.get().didMintToAddr, accountNFTMeta))
+                    .mapToObj(i -> new MintItem(Settings.get().didMintToAddr, accountNFTMeta, uuid))
                     .toList();
 
             mintService.submit(mints);

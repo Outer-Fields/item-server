@@ -11,6 +11,7 @@ import io.mindspice.itemserver.services.*;
 import io.mindspice.jxch.rpc.http.FullNodeAPI;
 import io.mindspice.jxch.rpc.http.WalletAPI;
 import io.mindspice.jxch.rpc.schemas.wallet.nft.MetaData;
+import io.mindspice.jxch.rpc.util.ChiaUtils;
 import io.mindspice.jxch.transact.logging.TLogger;
 import io.mindspice.jxch.transact.settings.JobConfig;
 import io.mindspice.mindlib.data.tuples.Pair;
@@ -54,13 +55,13 @@ public class ServiceConfig {
             @Qualifier("cardList") List<Card> cardList,
             @Qualifier("assetTable") Map<String, Pair<String, PackType>> assetTable,
             @Qualifier("executor") ScheduledExecutorService executor,
-            @Qualifier("customLogger") TLogger logger
+            @Qualifier("customLogger") CustomLogger logger
     ) {
         BlockchainMonitor monitor = new BlockchainMonitor(
                 monNodeApi, monWalletApi, okraChiaAPI, okraNFTAPI, mintService,
                 assetTable, cardList, Settings.get().startHeight, logger);
 
-        executor.scheduleAtFixedRate(monitor, 0, 2000, TimeUnit.MILLISECONDS);
+        executor.scheduleAtFixedRate(monitor, 0, Settings.get().chainScanInterval, TimeUnit.MILLISECONDS);
         return monitor;
     }
 
@@ -69,7 +70,7 @@ public class ServiceConfig {
             @Qualifier("executor") ScheduledExecutorService executor,
             @Qualifier("mainNodeAPI") FullNodeAPI nodeApi,
             @Qualifier("mintWalletAPI") WalletAPI walletApi,
-            @Qualifier("customLogger") TLogger logger,
+            @Qualifier("customLogger") CustomLogger logger,
             @Qualifier("okraNFTAPI") OkraNFTAPI nftApi
     ) {
         try {
@@ -88,7 +89,7 @@ public class ServiceConfig {
             @Qualifier("executor") ScheduledExecutorService executor,
             @Qualifier("mainNodeAPI") FullNodeAPI nodeApi,
             @Qualifier("transactWalletAPI") WalletAPI walletApi,
-            @Qualifier("customLogger") TLogger logger,
+            @Qualifier("customLogger") CustomLogger logger,
             @Qualifier("okraNFTAPI") OkraNFTAPI nftApi
     ) {
         try {
@@ -106,7 +107,7 @@ public class ServiceConfig {
             @Qualifier("executor") ScheduledExecutorService executor,
             @Qualifier("mainNodeAPI") FullNodeAPI nodeApi,
             @Qualifier("transactWalletAPI") WalletAPI walletApi,
-            @Qualifier("customLogger") TLogger logger,
+            @Qualifier("customLogger") CustomLogger logger,
             @Qualifier("okraNFTAPI") OkraNFTAPI nftApi
     ) {
         try {
@@ -203,4 +204,5 @@ public class ServiceConfig {
     public CustomLogger customLogger() {
         return new CustomLogger();
     }
+
 }

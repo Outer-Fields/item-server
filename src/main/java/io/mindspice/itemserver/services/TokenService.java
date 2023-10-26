@@ -26,10 +26,10 @@ public class TokenService extends TransactionService {
     private final OkraNFTAPI nftAPI;
 
     public TokenService(ScheduledExecutorService executor, JobConfig config,
-            TLogger tLogger, FullNodeAPI nodeAPI, WalletAPI walletAPI, OkraNFTAPI nftAPI) {
+            CustomLogger tLogger, FullNodeAPI nodeAPI, WalletAPI walletAPI, OkraNFTAPI nftAPI) {
         super(executor, config, tLogger, nodeAPI, walletAPI);
         this.nftAPI = nftAPI;
-        tLogger.log(this.getClass(), TLogLevel.INFO, "Started Token Service");
+        tLogger.logApp(this.getClass(), TLogLevel.INFO, "Started Token Service");
 
     }
 
