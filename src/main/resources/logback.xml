@@ -36,15 +36,15 @@
         </rollingPolicy>
     </appender>
 
-    <logger name="MINT" level="DEBUG" additivity="false">
+    <logger name="MINT" level="INFO" additivity="false">
         <appender-ref ref="MINT"/>
     </logger>
 
-    <logger name="FAILED" level="DEBUG" additivity="false">
+    <logger name="FAILED" level="INFO" additivity="false">
         <appender-ref ref="FAILED"/>
     </logger>
 
-    <logger name="APP" level="DEBUG" additivity="false">
+    <logger name="APP" level="INFO" additivity="false">
         <appender-ref ref="APP"/>
     </logger>
 

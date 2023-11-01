@@ -11,8 +11,6 @@ import io.mindspice.itemserver.services.*;
 import io.mindspice.jxch.rpc.http.FullNodeAPI;
 import io.mindspice.jxch.rpc.http.WalletAPI;
 import io.mindspice.jxch.rpc.schemas.wallet.nft.MetaData;
-import io.mindspice.jxch.rpc.util.ChiaUtils;
-import io.mindspice.jxch.transact.logging.TLogger;
 import io.mindspice.jxch.transact.settings.JobConfig;
 import io.mindspice.mindlib.data.tuples.Pair;
 import io.mindspice.mindlib.http.UnsafeHttpJsonClient;
@@ -143,7 +141,7 @@ public class ServiceConfig {
                 cardList,
                 customLogger
         );
-        var timeToMidnight = ChronoUnit.MINUTES.between(LocalTime.now(), LocalTime.MIDNIGHT);
+        var timeToMidnight = ChronoUnit.MINUTES.between(LocalTime.now(), LocalTime.MAX);
         exec.scheduleWithFixedDelay(rewardService, timeToMidnight, 1440, TimeUnit.MINUTES);
         return rewardService;
     }
@@ -182,7 +180,7 @@ public class ServiceConfig {
     public List<Card> cardList(
             OkraNFTAPI nftApi
     ) {
-        return nftApi.getCardCollection("test_cards").data()
+        return nftApi.getCardCollection(Settings.get().currCollection).data()
                 .orElseThrow(() -> new IllegalStateException("Failed to load card collection from database"));
     }
 

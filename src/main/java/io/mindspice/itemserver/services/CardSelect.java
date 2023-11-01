@@ -5,6 +5,7 @@ import io.mindspice.databaseservice.client.schema.CardDomain;
 import io.mindspice.databaseservice.client.schema.CardType;
 
 import io.mindspice.itemserver.Settings;
+import io.mindspice.jxch.transact.logging.TLogLevel;
 import io.mindspice.jxch.transact.util.Pair;
 
 import java.util.*;
@@ -18,8 +19,11 @@ public class CardSelect {
 
     public static List<Card> getCards(List<Card> cards, int amount, CardDomain domain, CardType type) {
         List<Card> selectedCards = selectCards(cards, amount, domain, type);
+        int i= 0;
         while (selectedCards.size() < amount) {
             selectedCards.addAll(selectCards(cards, amount - selectedCards.size(), domain, type));
+            i++;
+            if (i > 200) { throw new IllegalStateException("Endless loop in card gen, shouldn't happen"); }
         }
         return selectedCards;
     }
@@ -37,7 +41,6 @@ public class CardSelect {
             }
             j++;
             if (j > 200) { throw new IllegalStateException("Endless loop in card gen, shouldn't happen"); }
-            j++;
         }
         return selectionList;
     }

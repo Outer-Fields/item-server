@@ -135,7 +135,7 @@ public class RewardService implements Runnable {
             try {
                 logger.logApp(this.getClass(), TLogLevel.INFO, "Dispersing Rewards: " + JsonUtils.writeString(dispersalResponse.data().get()));
             } catch (Exception e) {
-                logger.logApp(this.getClass(), TLogLevel.ERROR, "Failed writing dispersals falling back to java string " +
+                logger.logApp(this.getClass(), TLogLevel.ERROR, "Failed writing dispersal falling back to java string " +
                         "deserialization: " + dispersalResponse.data().get());
             }
 
