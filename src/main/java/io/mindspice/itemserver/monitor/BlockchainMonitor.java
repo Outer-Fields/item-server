@@ -9,7 +9,7 @@ import io.mindspice.databaseservice.client.schema.NftUpdate;
 import io.mindspice.itemserver.schema.PackPurchase;
 import io.mindspice.itemserver.schema.PackType;
 import io.mindspice.itemserver.Settings;
-import io.mindspice.itemserver.services.CustomLogger;
+import io.mindspice.itemserver.util.CustomLogger;
 import io.mindspice.itemserver.services.PackMint;
 import io.mindspice.itemserver.util.Utils;
 import io.mindspice.jxch.rpc.http.FullNodeAPI;
@@ -97,7 +97,8 @@ public class BlockchainMonitor implements Runnable {
                 return;
             }
 
-            // NOTE offers need to be parsed via finding the parent in the removals since they do some intermediate operations
+            // NOTE offer transactions need to be discovered via finding the parent in the removals
+            //  since they do some intermediate operations
             CompletableFuture<CardAndAccountCheck> cardAndAccountCheck = CompletableFuture.supplyAsync(() -> {
                 var cardOrAccountUpdates = nftAPI.checkIfCardOrAccountExists(
                         Stream.concat(additions.stream(), removals.stream())
@@ -249,12 +250,16 @@ public class BlockchainMonitor implements Runnable {
                     if (!updateRtn.success()) {
                         logger.logApp(this.getClass(), TLogLevel.ERROR, "Failed Updating card launcher: "
                                 + launcherId + " | Height : " + (nextHeight - 1) + " |  Reason: " + updateRtn.error_msg());
-                        virtualExec.submit(() -> nftAPI.addFailedUpdate(launcherId, nextHeight - 1, false));
+                        virtualExec.submit(() -> nftAPI.addFailedUpdate(launcherId,
+                                nextHeight - 1, false, updateRtn.error_msg())
+                        );
                     }
                 } catch (Exception e) {
                     logger.logApp(this.getClass(), TLogLevel.ERROR, "Failed Updating card launcher: "
                             + launcherId + " | Height : " + (nextHeight - 1) + " |  Reason: " + e.getMessage());
-                    virtualExec.submit(() -> nftAPI.addFailedUpdate(launcherId, nextHeight - 1, false));
+                    virtualExec.submit(() -> nftAPI.addFailedUpdate(launcherId,
+                            nextHeight - 1, false, e.getMessage())
+                    );
                 }
             }
 
@@ -272,12 +277,16 @@ public class BlockchainMonitor implements Runnable {
                     if (!updateRtn.success()) {
                         logger.logApp(this.getClass(), TLogLevel.ERROR, "Failed account launcher: "
                                 + didInfo.launcherId() + " | Height : " + (nextHeight - 1) + " |  Reason: " + updateRtn.error_msg());
-                        virtualExec.submit(() -> nftAPI.addFailedUpdate(didInfo.launcherId(), nextHeight - 1, false));
+                        virtualExec.submit(() -> nftAPI.addFailedUpdate(didInfo.launcherId(),
+                                nextHeight - 1, false, updateRtn.error_msg())
+                        );
                     }
                 } catch (Exception e) {
                     logger.logApp(this.getClass(), TLogLevel.ERROR, "Failed account launcher: "
                             + didInfo.launcherId() + " | Height : " + (nextHeight - 1) + " |  Reason: " + e.getMessage());
-                    virtualExec.submit(() -> nftAPI.addFailedUpdate(didInfo.launcherId(), nextHeight - 1, false));
+                    virtualExec.submit(() -> nftAPI.addFailedUpdate(didInfo.launcherId(),
+                            nextHeight - 1, false, e.getMessage())
+                    );
                 }
             }
             logger.logApp(this.getClass(), TLogLevel.INFO, "Successfully updated NFTs: "

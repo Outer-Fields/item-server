@@ -6,12 +6,12 @@ import io.mindspice.databaseservice.client.api.OkraNFTAPI;
 import io.mindspice.databaseservice.client.schema.Card;
 import io.mindspice.databaseservice.client.schema.RewardDispersal;
 import io.mindspice.itemserver.Settings;
+import io.mindspice.itemserver.util.TransactLogger;
 import io.mindspice.jxch.rpc.http.FullNodeAPI;
 import io.mindspice.jxch.rpc.schemas.wallet.Addition;
 import io.mindspice.jxch.transact.service.mint.MintItem;
 import io.mindspice.jxch.transact.service.transaction.TransactionItem;
 import io.mindspice.jxch.transact.logging.TLogLevel;
-import io.mindspice.jxch.transact.logging.TLogger;
 import io.mindspice.mindlib.util.JsonUtils;
 
 import java.util.List;
@@ -30,12 +30,12 @@ public class RewardService implements Runnable {
     private final TokenService okraTokenService;
     private final TokenService outrTokenService;
     private final List<Card> cardList;
-    private final CustomLogger logger;
+    private final TransactLogger logger;
     private final ThreadLocalRandom rand = ThreadLocalRandom.current();
 
     public RewardService(OkraGameAPI gameAPI, OkraNFTAPI nftAPI, OkraChiaAPI chiaAPI, FullNodeAPI nodeAPI,
             CardMintService mintService, TokenService okraTokenService, TokenService outrTokenService,
-            List<Card> cardList, CustomLogger logger) {
+            List<Card> cardList, TransactLogger logger) {
         this.gameAPI = gameAPI;
         this.nftAPI = nftAPI;
         this.chiaAPI = chiaAPI;
@@ -59,27 +59,33 @@ public class RewardService implements Runnable {
             try {
                 String accountCoin = gameAPI.getAccountCoin(dispersal.playerId()).data().orElseThrow();
                 String address = nodeAPI.getNftRecipientAddress(accountCoin).data().orElseThrow();
-
                 if ((dispersal.okraTokens() > Settings.get().okraFlagAmount)
                         || (dispersal.nftDrops() > Settings.get().nftFlagAmount)
                         || (dispersal.outrTokens() > Settings.get().outrFlagAmount)) {
                     gameAPI.addFlaggedDispersal(
                             dispersal.playerId(), dispersal.okraTokens(), dispersal.outrTokens(), dispersal.nftDrops()
                     );
-                    logger.logApp(this.getClass(), TLogLevel.INFO, "Flagged dispersal: Player id: "
+                    logger.log(this.getClass(), TLogLevel.INFO, "Flagged dispersal: Player id: "
                             + dispersal.playerId() + " | Okra Tokens: " + dispersal.okraTokens()
                             + " | Outr Tokens: " + dispersal.outrTokens() + " | NFT drops:" + dispersal.nftDrops());
                 }
 
                 if (dispersal.okraTokens() > 0) {
                     okraTokenService.submit(// 1000 mojo per token
-                            new TransactionItem(new Addition(address, dispersal.okraTokens() * 1000L))
+                            new TransactionItem(
+                                    new Addition(address, dispersal.okraTokens() * 1000L),
+                                    dispersal.playerId() + ":OKRA:" + UUID.randomUUID()
+                            )
                     );
                 }
 
                 if (dispersal.outrTokens() > 0) {
                     outrTokenService.submit(// 1000 mojo per token
-                            new TransactionItem(new Addition(address, dispersal.outrTokens() * 1000L))
+                            new TransactionItem(
+                                    new Addition(address, dispersal.outrTokens() * 1000L),
+                                    dispersal.playerId() + ":OUTR:" + UUID.randomUUID()
+
+                            )
                     );
 
                 }
@@ -108,13 +114,12 @@ public class RewardService implements Runnable {
             var dispersalResponse = gameAPI.getRewardsForDispersal();
             if (!dispersalResponse.success()) {
                 if (dispersalResponse.error()) {
-                    logger.logApp(this.getClass(), TLogLevel.ERROR,
+                    logger.log(this.getClass(), TLogLevel.ERROR,
                             "Failed fetching rewards for dispersal" + dispersalResponse.error_msg());
                 } else {
-                    logger.logApp(this.getClass(), TLogLevel.ERROR,
+                    logger.log(this.getClass(), TLogLevel.ERROR,
                             "No rewards returned" + dispersalResponse.error_msg());
-                    }
-                return;
+                }
             }
 
             var resetDailyResponse = gameAPI.resetDailyResults();
@@ -128,14 +133,13 @@ public class RewardService implements Runnable {
             }
 
             if (dispersalResponse.data().isEmpty()) {
-                logger.logApp(this.getClass(), TLogLevel.INFO, "No rewards found");
                 return;
             }
 
             try {
-                logger.logApp(this.getClass(), TLogLevel.INFO, "Dispersing Rewards: " + JsonUtils.writeString(dispersalResponse.data().get()));
+                logger.log(this.getClass(), TLogLevel.INFO, "Dispersing Rewards: " + JsonUtils.writeString(dispersalResponse.data().get()));
             } catch (Exception e) {
-                logger.logApp(this.getClass(), TLogLevel.ERROR, "Failed writing dispersal falling back to java string " +
+                logger.log(this.getClass(), TLogLevel.ERROR, "Failed writing dispersal falling back to java string " +
                         "deserialization: " + dispersalResponse.data().get());
             }
 

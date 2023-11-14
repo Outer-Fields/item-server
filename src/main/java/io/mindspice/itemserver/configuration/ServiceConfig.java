@@ -8,6 +8,8 @@ import io.mindspice.itemserver.schema.PackType;
 import io.mindspice.itemserver.Settings;
 import io.mindspice.itemserver.monitor.BlockchainMonitor;
 import io.mindspice.itemserver.services.*;
+import io.mindspice.itemserver.util.CustomLogger;
+import io.mindspice.itemserver.util.TransactLogger;
 import io.mindspice.jxch.rpc.http.FullNodeAPI;
 import io.mindspice.jxch.rpc.http.WalletAPI;
 import io.mindspice.jxch.rpc.schemas.wallet.nft.MetaData;
@@ -87,7 +89,7 @@ public class ServiceConfig {
             @Qualifier("executor") ScheduledExecutorService executor,
             @Qualifier("mainNodeAPI") FullNodeAPI nodeApi,
             @Qualifier("transactWalletAPI") WalletAPI walletApi,
-            @Qualifier("customLogger") CustomLogger logger,
+            @Qualifier("transactLogger") TransactLogger logger,
             @Qualifier("okraNFTAPI") OkraNFTAPI nftApi
     ) {
         try {
@@ -105,7 +107,7 @@ public class ServiceConfig {
             @Qualifier("executor") ScheduledExecutorService executor,
             @Qualifier("mainNodeAPI") FullNodeAPI nodeApi,
             @Qualifier("transactWalletAPI") WalletAPI walletApi,
-            @Qualifier("customLogger") CustomLogger logger,
+            @Qualifier("transactLogger") TransactLogger logger,
             @Qualifier("okraNFTAPI") OkraNFTAPI nftApi
     ) {
         try {
@@ -128,7 +130,7 @@ public class ServiceConfig {
             @Qualifier("okraTokenService") TokenService okraTokenService,
             @Qualifier("outrTokenService") TokenService outrTokenService,
             @Qualifier("cardList") List<Card> cardList,
-            @Qualifier("customLogger") CustomLogger customLogger,
+            @Qualifier("transactLogger") TransactLogger customLogger,
             @Qualifier("executor") ScheduledExecutorService exec) {
         RewardService rewardService = new RewardService(
                 okraGameAPI,
@@ -177,6 +179,17 @@ public class ServiceConfig {
     }
 
     @Bean
+    LeaderBoardService leaderBoardService(
+            @Qualifier("okraGameAPI") OkraGameAPI okraGameAPI,
+            @Qualifier("customLogger") CustomLogger customLogger,
+            @Qualifier("executor") ScheduledExecutorService exec
+    ) {
+        LeaderBoardService leaderBoardService = new LeaderBoardService(okraGameAPI, customLogger);
+        exec.scheduleWithFixedDelay(leaderBoardService.updateScores(), 0, 5, TimeUnit.MINUTES);
+        return leaderBoardService;
+    }
+
+    @Bean
     public List<Card> cardList(
             OkraNFTAPI nftApi
     ) {
@@ -202,5 +215,11 @@ public class ServiceConfig {
     public CustomLogger customLogger() {
         return new CustomLogger();
     }
+
+    @Bean
+    public TransactLogger transactLogger() {
+        return new TransactLogger();
+    }
+
 
 }

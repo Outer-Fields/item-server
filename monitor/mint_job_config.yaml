@@ -1,0 +1,15 @@
+didWalletId: 2
+feeWalletId: 1
+mintWalletId: 3
+assetWalletId: 0
+fundWallet: 1
+minFeePerCost: 5
+maxFeePerCost: 20
+mintChangeTarget: "0c7962cc551aa10cab3148823235bcf877814320947cb64c0c0a8d70871c051c"    # This need to be a puzzle_hash not a xch prefixed addressed
+maxRetries: 100
+feeIncInterval: 10
+retryWaitInterval: 45000
+incFeeOnFail: true
+queueMaxWaitSec: 9
+queueCheckInterval: 10
+jobSize: 25

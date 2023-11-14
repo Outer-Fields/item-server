@@ -3,6 +3,7 @@ package io.mindspice.itemserver.services;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import io.mindspice.databaseservice.client.api.OkraNFTAPI;
 import io.mindspice.databaseservice.client.schema.MintLog;
+import io.mindspice.itemserver.util.CustomLogger;
 import io.mindspice.itemserver.util.Utils;
 import io.mindspice.jxch.rpc.http.FullNodeAPI;
 import io.mindspice.jxch.rpc.http.WalletAPI;
@@ -12,7 +13,6 @@ import io.mindspice.jxch.rpc.util.RPCException;
 import io.mindspice.jxch.transact.service.mint.MintItem;
 import io.mindspice.jxch.transact.service.mint.MintService;
 import io.mindspice.jxch.transact.logging.TLogLevel;
-import io.mindspice.jxch.transact.logging.TLogger;
 import io.mindspice.jxch.transact.settings.JobConfig;
 import io.mindspice.mindlib.util.FuncUtils;
 
@@ -39,16 +39,15 @@ public class CardMintService extends MintService {
     }
 
     @Override
-    protected void onFail(List<MintItem> list) {
-        tLogger.log(this.getClass(), TLogLevel.FAILED, "Failed Mint for UUIDs: " +
-                list.stream().map(MintItem::uuid).toList());
+    protected void onFail(List<MintItem> failList) {
+        failList.forEach(i -> nftApi.addFailedMint(i.uuid(), "Returned Failed"));
         try {
-            tLogger.log(this.getClass(), TLogLevel.FAILED, "Failed Mint Json: " + JsonUtils.writeString(list));
+            tLogger.log(this.getClass(), TLogLevel.FAILED, "Failed Mint Json: " + JsonUtils.writeString(failList));
         } catch (JsonProcessingException e) {
             tLogger.log(this.getClass(), TLogLevel.ERROR,
-                    "Failed Writing Failed Mints, Reverting To Java Deserialization: " + list, e);
+                    "Failed Writing Failed Mints, Reverting To Java Deserialization: " + failList, e);
         }
-        failedMints.addAll(list);
+        failedMints.addAll(failList);
     }
 
     public void reSubmitFailedMints() {

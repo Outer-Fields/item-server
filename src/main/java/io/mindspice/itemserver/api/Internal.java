@@ -9,6 +9,7 @@ import io.mindspice.itemserver.schema.ApiMint;
 import io.mindspice.itemserver.Settings;
 import io.mindspice.itemserver.schema.ApiMintReq;
 import io.mindspice.itemserver.services.AvatarService;
+import io.mindspice.itemserver.services.LeaderBoardService;
 import io.mindspice.jxch.rpc.schemas.wallet.nft.MetaData;
 import io.mindspice.jxch.transact.logging.TLogLevel;
 import io.mindspice.jxch.transact.logging.TLogger;
@@ -22,6 +23,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
+import java.net.http.HttpResponse;
 import java.util.*;
 import java.util.stream.IntStream;
 
@@ -32,6 +34,7 @@ import java.util.stream.IntStream;
 public class Internal {
     private final MintService mintService;
     private final AvatarService avatarService;
+    private final LeaderBoardService leaderBoardService;
     private final OkraNFTAPI nftAPI;
     private final MetaData accountNFTMeta;
     private final TLogger logger;
@@ -39,17 +42,18 @@ public class Internal {
     public Internal(
             @Qualifier("mintService") MintService mintService,
             @Qualifier("avatarService") AvatarService avatarService,
+            @Qualifier("leaderBoardService") LeaderBoardService leaderBoardService,
             @Qualifier("okraNFTAPI") OkraNFTAPI nftAPI,
             @Qualifier("customLogger") TLogger customLogger,
             @Qualifier("accountNFTMeta") MetaData accountNFTMeta
     ) {
         this.mintService = mintService;
         this.avatarService = avatarService;
+        this.leaderBoardService = leaderBoardService;
         this.nftAPI = nftAPI;
         this.accountNFTMeta = accountNFTMeta;
         this.logger = customLogger;
     }
-
 
     @PostMapping("/mint_card_nfts")
     public ResponseEntity<String> mintCardNfts(@RequestBody String jsonReq) throws IOException {
@@ -61,7 +65,8 @@ public class Internal {
                             m.address(),
                             m.card_uid().equals("DID")
                                     ? accountNFTMeta
-                                    : cards.stream().filter(c -> c.uid().equals(m.card_uid())).findFirst().orElseThrow().metaData()
+                                    : cards.stream().filter(c -> c.uid().equals(m.card_uid()))
+                                    .findFirst().orElseThrow().metaData()
                                     .cloneSetEdt(nftAPI.getAndIncEdt(mintReq.collection(), m.card_uid()).data().get()),
                             m.job_uuid())
             ).toList();
@@ -123,6 +128,20 @@ public class Internal {
             return new ResponseEntity<>(JsonUtils.writeString(JsonUtils.newSingleNode("pong", ping)), HttpStatus.OK);
         } catch (Exception e) {
             logger.log(this.getClass(), TLogLevel.ERROR, "/health threw exception:", e);
+            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @GetMapping("/get_leaderboard")
+    public ResponseEntity<String> getLeaderBoard() {
+        try {
+            JsonNode response = new JsonUtils.ObjectBuilder()
+                    .put("daily_scores", leaderBoardService.getDailyScores())
+                    .put("weekly_scores", leaderBoardService.getWeeklyScores())
+                    .put("monthly_scores", leaderBoardService.getMonthlyScores())
+                    .buildNode();
+            return new ResponseEntity<>(JsonUtils.writeString(response), HttpStatus.OK);
+        } catch (JsonProcessingException e) {
             return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }

@@ -1,0 +1,64 @@
+---
+# Blockchain
+startHeight: 3307964
+heightBuffer: 12
+isPaused: false
+
+# Service DB
+okraDBUri: "http://192.168.10.30:8080"
+okraDBUser: "user"
+okraDBPass: "pass"
+
+# Node DB
+chiaDBUri: "http://192.168.122.201:9191"
+chiaDBUser: "user"
+chiaDBPass: "pass"
+
+# Auth Server
+authServiceUri:  "http://localhost"
+authServicePort: 8080
+authServiceUser:  ""
+authServicePass:  ""
+
+# Collection Config
+holoPct: 3
+goldPct: 20
+highLvl: 35
+currCollection: "test_cards" # Current distribution collection to get from database
+
+# Chia node/wallet
+mainNodeConfig: "/home/mindspice/code/Java/Okra/okra-item-server/mon_chia_node.yaml"
+mintWalletConfig: "/home/mindspice/code/Java/Okra/okra-item-server/transact_chia_node.yaml"
+transactionWalletConfig: "/home/mindspice/code/Java/Okra/okra-item-server/transact_chia_node.yaml"
+
+# Job config
+mintJobConfig: "/home/mindspice/code/Java/Okra/okra-item-server/mint_job_config.yaml"
+okraJobConfig: "/home/mindspice/code/Java/Okra/okra-item-server/token_job_config.yaml"
+outrJobConfig: "/home/mindspice/code/Java/Okra/okra-item-server/token_job_config2.yaml"
+
+# S3 avatar service
+s3AccessKey: "*************"
+s3SecretKey: "*************************"
+
+# Assets
+# Root Address:
+boosterAddress: ""
+boosterTail: ""
+starterAddress: ""
+starterTail: ""
+
+# DID NFT info
+didMintToAddr: ""
+didUris: []
+didMetaUris: []
+didLicenseUris: []
+didHash: ""
+didMetaHash: ""
+didLicenseHash: ""
+
+# Dispersal limits
+nftFlagAmount: 5
+okraFlagAmount: 2000
+outrFlagAmount: 500
+
+

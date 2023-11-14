@@ -1,4 +1,4 @@
-package io.mindspice.itemserver.services;
+package io.mindspice.itemserver.util;
 
 import io.mindspice.jxch.transact.logging.TLogLevel;
 import io.mindspice.jxch.transact.logging.TLogger;
@@ -6,8 +6,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
-public class CustomLogger implements TLogger {
-    private static final Logger MINT_LOG = LoggerFactory.getLogger("MINT");
+public class TransactLogger implements TLogger {
+    private static final Logger MINT_LOG = LoggerFactory.getLogger("TRANSACT");
     private static final Logger FAILED_LOG = LoggerFactory.getLogger("FAILED");
     private static final Logger APP_LOG = LoggerFactory.getLogger("APP");
 
@@ -33,6 +33,7 @@ public class CustomLogger implements TLogger {
             case DEBUG -> APP_LOG.debug(msg, e);
         }
     }
+
 
 
     @Override

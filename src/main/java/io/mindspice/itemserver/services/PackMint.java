@@ -6,10 +6,10 @@ import io.mindspice.databaseservice.client.schema.CardDomain;
 import io.mindspice.itemserver.Settings;
 import io.mindspice.itemserver.schema.PackPurchase;
 
+import io.mindspice.itemserver.util.CustomLogger;
 import io.mindspice.jxch.transact.service.mint.MintItem;
 import io.mindspice.jxch.transact.service.mint.MintService;
 import io.mindspice.jxch.transact.logging.TLogLevel;
-import io.mindspice.jxch.transact.logging.TLogger;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -28,7 +28,7 @@ public class PackMint implements Runnable {
     private final Random rand;
     private final CustomLogger logger;
     private final ExecutorService virtualExec;
-    private double[] lvlList = new double[]{2.2, 2.3, 2.4, 2.5, 2.6};
+    private double[] lvlList = new double[]{2.0, 2.1, 2.2, 2.3, 2.4};
     IntPredicate chance = threshold -> ThreadLocalRandom.current().nextInt(100) < threshold;
 
     public PackMint(List<Card> cardList, List<PackPurchase> packPurchases, MintService mintService, OkraNFTAPI nftAPI

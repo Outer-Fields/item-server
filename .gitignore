@@ -34,3 +34,6 @@ build/
 
 ## Configs ##
 *.config
+
+/certs/
+

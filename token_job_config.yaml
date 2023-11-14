@@ -1,0 +1,14 @@
+didWalletId: 10
+feeWalletId: 1
+mintWalletId: 11
+fundWalletId: 1
+minFeePerCost: 10
+maxFeePerCost: 20
+changeTarget: "0x2fcbeedb166980fb3fdf02e2e4598403905873f9c5bf74ffe4c077637444aba1"    # This need to be a 0x<puzzle_hash> not a xch prefixed addressed
+maxRetries: 100
+feeIncInterval: 10
+retryWaitInterval: 45000
+queueMaxWaitSec: 10
+queueCheckInterval: 10
+jobSize: 400
+debugSpendbundle: false

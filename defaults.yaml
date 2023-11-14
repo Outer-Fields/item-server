@@ -1,0 +1,13 @@
+---
+startHeight: 0
+heightBuffer: 0
+isPaused: false
+okraDBUri: null
+okraDBUser: null
+okraDBPass: null
+chiaDBUri: null
+chiaDBUser: null
+chiaDBPass: null
+holoPct: 3
+goldPct: 20
+highLvl: 40

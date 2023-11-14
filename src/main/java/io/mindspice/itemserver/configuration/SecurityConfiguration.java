@@ -44,7 +44,7 @@ public class SecurityConfiguration {
         http
                 .csrf().disable()
                 .cors(customizer -> corsConfigurationSource())
-                .httpBasic()  // Enables Basic Authentication
+                .httpBasic()
                 .and()
                 .authorizeHttpRequests((authz) -> authz
                         .requestMatchers("/internal/**", "/admin/**").hasRole("ADMIN")

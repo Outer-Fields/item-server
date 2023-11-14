@@ -1,11 +1,11 @@
 package io.mindspice.itemserver.services;
 
 import io.mindspice.databaseservice.client.api.OkraGameAPI;
+import io.mindspice.itemserver.util.CustomLogger;
 import io.mindspice.itemserver.util.Utils;
 import io.mindspice.jxch.rpc.http.WalletAPI;
 import io.mindspice.jxch.rpc.schemas.wallet.nft.NftInfo;
 import io.mindspice.jxch.transact.logging.TLogLevel;
-import io.mindspice.jxch.transact.logging.TLogger;
 import io.mindspice.mindlib.data.tuples.Pair;
 import io.mindspice.mindlib.http.UnsafeHttpClient;
 
@@ -21,10 +21,7 @@ import java.io.InputStream;
 import java.time.Instant;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.stream.IntStream;
 
 //TODO make logging make logging follow existing practices for formatting
 
